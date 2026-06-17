@@ -1,244 +1,282 @@
 import React from 'react';
 import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  TouchableOpacity,
+  View, Text, StyleSheet, TouchableOpacity,
+  ScrollView, SafeAreaView,
 } from 'react-native';
-import { StatusBar } from 'expo-status-bar';
 
-export default function PoliceDashboard({ navigation }) {
+const RED = '#d32f2f';
+
+export default function PoliceDashboard({ nav, location }) {
+  const incidents = [
+    {
+      tag: 'CRITICAL ALERT', tagColor: '#fde8e8', tagTxt: RED,
+      time: '02:14 PM', status: 'PENDING', statusBg: RED,
+      title: 'SOS Trigger: Route de Mvolyé',
+      id: 'TX-9928', network: 'MTN Network', networkIco: '📡',
+      driver: 'Jean-Paul Nguemo', driverImg: '👤',
+      unit: null, resolved: false,
+      accentColor: RED,
+    },
+    {
+      tag: 'MEDICAL NEED', tagColor: '#e8f0fe', tagTxt: '#1565C0',
+      time: '01:58 PM', status: 'RESPONDING', statusBg: '#1565C0',
+      title: 'Station Mobile - Douala Road',
+      id: 'DL-4412', network: 'Orange Network', networkIco: '📡',
+      driver: null, driverImg: null,
+      unit: 'PATROL UNIT P-09 EN ROUTE', resolved: false,
+      accentColor: '#1565C0',
+    },
+    {
+      tag: 'ENGINE FAILURE', tagColor: '#f5f5f5', tagTxt: '#555',
+      time: '01:30 PM', status: 'RESOLVED', statusBg: '#b8b8b8',
+      title: 'Mokolo Market Perimeter',
+      id: null, network: null, networkIco: null,
+      driverLine: 'DRIVER: SAMUEL ETO\'O FIL',
+      driver: null, unit: null, resolved: true,
+      accentColor: '#ccc',
+    },
+  ];
+
   return (
-    <ScrollView style={styles.container}>
-      <StatusBar style="light" />
-      
-      <View style={styles.header}>
-        <Text style={styles.headerTitle}>TAXI SAFETY NETWORK</Text>
-        <Text style={styles.headerSub}>YAOUNDÉ DISTRICT COMMAND</Text>
-        <View style={styles.liveBadge}>
-          <Text style={styles.liveText}>LIVE SIGNAL: ACTIVE</Text>
-        </View>
-        <Text style={styles.sector}>CURRENT SECTOR: Bastos / Mvan Junction</Text>
-      </View>
+    <SafeAreaView style={s.safe}>
 
-      <View style={styles.statsRow}>
-        <View style={styles.statCard}>
-          <Text style={styles.statNumber}>14</Text>
-          <Text style={styles.statLabel}>ACTIVE ALERTS</Text>
-          <Text style={styles.statNew}>+2 New</Text>
+      {/* Header */}
+      <View style={s.header}>
+        <View style={s.headerLeft}>
+          <View style={s.shieldWrap}><Text style={s.shieldIco}>🛡</Text></View>
+          <View>
+            <Text style={s.headerTitle}>TAXI SAFETY NETWORK</Text>
+            <Text style={s.headerSub}>YAOUNDÉ DISTRICT COMMAND</Text>
+          </View>
         </View>
-        <View style={styles.statCard}>
-          <Text style={styles.statNumber}>08</Text>
-          <Text style={styles.statLabel}>RESPONDERS</Text>
-          <Text style={styles.statNew}>In Field</Text>
+        <View style={s.headerRight}>
+          <View style={s.bellWrap}><Text style={s.bell}>🔔</Text><View style={s.bellDot}/></View>
+          <Text style={s.signalIco}>📶</Text>
         </View>
       </View>
 
-      <Text style={styles.sectionTitle}>ACTIVE INCIDENT LOGS</Text>
-      <Text style={styles.sectionFr}>
-        CHRONOLOGICAL ORDER / ORDRE CHRONOLOGIQUE
-      </Text>
+      <ScrollView showsVerticalScrollIndicator={false}>
 
-      <TouchableOpacity
-        style={styles.alertCard}
-        onPress={() => navigation.navigate('AlertDetails')}
-      >
-        <Text style={styles.alertTitle}>🚨 CRITICAL ALERT</Text>
-        <Text style={styles.alertTime}>02:14 PM • PENDING</Text>
-        <Text style={styles.alertDesc}>SOS Trigger: Route de Mvolyé</Text>
-        <Text style={styles.alertDriver}>Driver: Jean-Paul Nguemo (TX-9928)</Text>
-        <Text style={styles.alertNetwork}>MTN Network</Text>
-        <View style={styles.unitBadge}>
-          <Text style={styles.unitText}>Patrol Unit P-09 EN ROUTE</Text>
+        {/* Map area */}
+        <View style={s.mapArea}>
+          <View style={s.liveSignalBadge}>
+            <View style={s.liveYellow}/><Text style={s.liveSignalTxt}>LIVE SIGNAL: ACTIVE</Text>
+          </View>
+          <View style={s.mapBg}><Text style={s.mapIco}>🗺</Text></View>
+          <View style={s.sectorRow}>
+            <View>
+              <Text style={s.sectorLabel}>CURRENT SECTOR</Text>
+              <Text style={s.sectorName}>Bastos / Mvan Junction</Text>
+            </View>
+            <View style={s.zoomBtns}>
+              <TouchableOpacity style={s.zoomBtn}><Text style={s.zoomTxt}>+</Text></TouchableOpacity>
+              <TouchableOpacity style={s.zoomBtn}><Text style={s.zoomTxt}>−</Text></TouchableOpacity>
+            </View>
+          </View>
         </View>
-      </TouchableOpacity>
 
-      <View style={styles.alertCard}>
-        <Text style={[styles.alertTitle, { borderLeftColor: '#ff9800' }]}>
-          🚑 MEDICAL NEED
-        </Text>
-        <Text style={styles.alertTime}>01:58 PM • RESPONDING</Text>
-        <Text style={styles.alertDesc}>Station Mobile - Douala Road</Text>
-        <Text style={styles.alertDriver}>ID: DL-4412 • Orange Network</Text>
-      </View>
+        {/* Stats row */}
+        <View style={s.statsRow}>
+          <View style={s.statLeft}>
+            <Text style={s.statLabel}>ACTIVE ALERTS</Text>
+            <View style={s.statRow}>
+              <Text style={s.statNum}>14</Text>
+              <View style={s.newBadge}><Text style={s.newTxt}>+2 New</Text></View>
+            </View>
+          </View>
+          <View style={s.statRight}>
+            <Text style={[s.statLabel, { color: '#fff' }]}>RESPONDERS</Text>
+            <Text style={[s.statNum, { color: '#fff', fontSize: 42 }]}>08</Text>
+            <Text style={s.inFieldTxt}>In Field</Text>
+          </View>
+        </View>
 
-      <View style={styles.alertCard}>
-        <Text style={[styles.alertTitle, { borderLeftColor: '#4caf50' }]}>
-          🔧 ENGINE FAILURE
-        </Text>
-        <Text style={styles.alertTime}>01:30 PM • RESOLVED</Text>
-        <Text style={styles.alertDesc}>Mokolo Market Perimeter</Text>
-        <Text style={styles.alertDriver}>DRIVER: SAMUEL ETO'O FIL</Text>
-      </View>
+        {/* Incident logs */}
+        <View style={s.logsSection}>
+          <Text style={s.logsTitle}>ACTIVE INCIDENT LOGS</Text>
+          <Text style={s.logsFr}>CHRONOLOGICAL ORDER / ORDRE CHRONOLOGIQUE</Text>
 
-      <View style={styles.bottomNav}>
-        <TouchableOpacity style={styles.navItem}>
-          <Text style={styles.navText}>DASHBOARD</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.navItem}>
-          <Text style={styles.navText}>ALERTS</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.navItem}>
-          <Text style={styles.navText}>CONTACTS</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.navItem}>
-          <Text style={styles.navText}>PROFILE</Text>
-        </TouchableOpacity>
+          {incidents.map((inc, i) => (
+            <TouchableOpacity
+              key={i}
+              style={[s.incCard, { borderLeftColor: inc.accentColor }]}
+              onPress={() => !inc.resolved && nav('AlertDetails')}
+              activeOpacity={0.82}
+            >
+              <View style={s.incTop}>
+                <View style={[s.incTagWrap, { backgroundColor: inc.tagColor }]}>
+                  <Text style={[s.incTag, { color: inc.tagTxt }]}>{inc.tag}</Text>
+                </View>
+                <Text style={s.incTime}>{inc.time}</Text>
+                <View style={[s.statusBadge, { backgroundColor: inc.statusBg }]}>
+                  <Text style={s.statusTxt}>{inc.status}</Text>
+                </View>
+              </View>
+
+              <Text style={s.incTitle}>{inc.title}</Text>
+
+              {inc.id && (
+                <View style={s.incMetaRow}>
+                  <Text style={s.incMeta}>🪪 ID: {inc.id}</Text>
+                  <Text style={s.incMeta}>  {inc.networkIco} {inc.network}</Text>
+                </View>
+              )}
+              {inc.driverLine && <Text style={s.incMeta}>{inc.driverLine}</Text>}
+
+              {inc.driver && (
+                <View style={s.driverRow}>
+                  <View style={s.driverAvatar}><Text style={s.driverAvatarTxt}>👤</Text></View>
+                  <View style={s.driverInfo}>
+                    <Text style={s.driverLabel}>DRIVER / CHAUFFEUR</Text>
+                    <Text style={s.driverName}>{inc.driver}</Text>
+                  </View>
+                  <TouchableOpacity style={s.callBtn}>
+                    <Text style={s.callIco}>📞</Text>
+                  </TouchableOpacity>
+                </View>
+              )}
+
+              {inc.unit && (
+                <View style={s.unitRow}>
+                  <Text style={s.unitIco}>🛡</Text>
+                  <Text style={s.unitTxt}>{inc.unit}</Text>
+                </View>
+              )}
+            </TouchableOpacity>
+          ))}
+        </View>
+      </ScrollView>
+
+      {/* Bottom nav */}
+      <View style={s.bottomNav}>
+        <View style={s.navItemActive}>
+          <Text style={s.navIcoActive}>⊞</Text>
+          <Text style={s.navTxtActive}>DASHBOARD</Text>
+        </View>
+        {[{ ico: '⚠', lbl: 'ALERTS' }, { ico: '👥', lbl: 'CONTACTS' }, { ico: '👤', lbl: 'PROFILE' }].map(({ ico, lbl }) => (
+          <TouchableOpacity key={lbl} style={s.navItem}>
+            <Text style={s.navIco}>{ico}</Text>
+            <Text style={s.navTxt}>{lbl}</Text>
+          </TouchableOpacity>
+        ))}
       </View>
-    </ScrollView>
+    </SafeAreaView>
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#f5f7fa',
-  },
+const s = StyleSheet.create({
+  safe: { flex: 1, backgroundColor: '#f5f5f5' },
+
   header: {
-    backgroundColor: '#0b2b3b',
-    padding: 20,
-    paddingTop: 50,
-    alignItems: 'center',
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    paddingHorizontal: 16, paddingVertical: 12,
+    backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#eee',
   },
-  headerTitle: {
-    color: 'white',
-    fontSize: 18,
-    fontWeight: 'bold',
+  headerLeft:  { flexDirection: 'row', alignItems: 'center' },
+  shieldWrap:  {
+    width: 34, height: 34, borderRadius: 9, backgroundColor: RED,
+    alignItems: 'center', justifyContent: 'center', marginRight: 10,
   },
-  headerSub: {
-    color: '#ffd700',
-    fontSize: 12,
-    marginTop: 3,
+  shieldIco:   { fontSize: 17, color: '#fff' },
+  headerTitle: { fontSize: 13, fontWeight: '900', color: '#111' },
+  headerSub:   { fontSize: 10, color: '#888', marginTop: 1 },
+  headerRight: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  bellWrap:    { position: 'relative' },
+  bell:        { fontSize: 22 },
+  bellDot:     { position: 'absolute', top: 0, right: 0, width: 9, height: 9, borderRadius: 5, backgroundColor: RED },
+  signalIco:   { fontSize: 20 },
+
+  /* Map */
+  mapArea: { backgroundColor: '#b8cfae', height: 220, position: 'relative' },
+  liveSignalBadge: {
+    position: 'absolute', top: 14, left: 14, zIndex: 10,
+    flexDirection: 'row', alignItems: 'center',
+    backgroundColor: 'rgba(255,255,255,0.85)', borderRadius: 20,
+    paddingHorizontal: 12, paddingVertical: 6,
   },
-  liveBadge: {
-    marginTop: 8,
-    backgroundColor: '#d32f2f',
-    paddingHorizontal: 12,
-    paddingVertical: 4,
-    borderRadius: 20,
+  liveYellow:    { width: 8, height: 8, borderRadius: 4, backgroundColor: '#f5c518', marginRight: 6 },
+  liveSignalTxt: { fontSize: 11, fontWeight: '700', color: '#333' },
+  mapBg:  { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  mapIco: { fontSize: 80, opacity: 0.2 },
+  sectorRow: {
+    position: 'absolute', bottom: 0, left: 0, right: 0,
+    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end',
+    paddingHorizontal: 16, paddingBottom: 14,
   },
-  liveText: {
-    color: 'white',
-    fontSize: 10,
-    fontWeight: 'bold',
+  sectorLabel: { fontSize: 10, color: '#fff', fontWeight: '600', opacity: 0.8 },
+  sectorName:  { fontSize: 20, fontWeight: '900', color: '#fff' },
+  zoomBtns: { flexDirection: 'row', gap: 6 },
+  zoomBtn:  { width: 36, height: 36, backgroundColor: 'rgba(255,255,255,0.85)', borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
+  zoomTxt:  { fontSize: 20, fontWeight: '300', color: '#333' },
+
+  /* Stats */
+  statsRow: { flexDirection: 'row', margin: 14, gap: 12 },
+  statLeft: {
+    flex: 1, backgroundColor: '#fff', borderRadius: 16, padding: 16,
+    shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.06, shadowRadius: 6, elevation: 2,
   },
-  sector: {
-    color: '#4caf50',
-    fontSize: 12,
-    marginTop: 8,
-  },
-  statsRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-    margin: 16,
-  },
-  statCard: {
-    backgroundColor: 'white',
-    padding: 15,
-    borderRadius: 12,
-    alignItems: 'center',
-    flex: 0.45,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 2,
-  },
-  statNumber: {
-    fontSize: 28,
-    fontWeight: 'bold',
-    color: '#0b2b3b',
-  },
-  statLabel: {
-    fontSize: 12,
-    color: '#666',
-  },
-  statNew: {
-    fontSize: 10,
-    color: '#ff9800',
-    marginTop: 3,
-  },
-  sectionTitle: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: '#0b2b3b',
-    marginHorizontal: 16,
-    marginTop: 10,
-  },
-  sectionFr: {
-    fontSize: 11,
-    color: '#666',
-    marginHorizontal: 16,
-    marginBottom: 10,
-  },
-  alertCard: {
-    backgroundColor: 'white',
-    marginHorizontal: 16,
-    marginVertical: 8,
-    padding: 15,
-    borderRadius: 12,
+  statRight: { flex: 1, backgroundColor: '#1565C0', borderRadius: 16, padding: 16 },
+  statLabel: { fontSize: 11, fontWeight: '700', color: '#555', letterSpacing: 0.3 },
+  statRow:   { flexDirection: 'row', alignItems: 'center', marginTop: 4 },
+  statNum:   { fontSize: 42, fontWeight: '900', color: RED },
+  newBadge:  { backgroundColor: '#fde8e8', borderRadius: 8, paddingHorizontal: 8, paddingVertical: 4, marginLeft: 10 },
+  newTxt:    { fontSize: 10, fontWeight: '700', color: RED },
+  inFieldTxt:{ fontSize: 12, color: '#90caf9', marginTop: 4 },
+
+  /* Logs */
+  logsSection: { paddingHorizontal: 14, paddingBottom: 14 },
+  logsTitle: { fontSize: 16, fontWeight: '900', color: '#111', letterSpacing: 0.3 },
+  logsFr:    { fontSize: 10, color: '#888', marginBottom: 12 },
+
+  incCard: {
+    backgroundColor: '#fff', borderRadius: 16, padding: 16, marginBottom: 12,
     borderLeftWidth: 4,
-    borderLeftColor: '#d32f2f',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 2,
-    elevation: 1,
+    shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.06, shadowRadius: 6, elevation: 2,
   },
-  alertTitle: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: '#d32f2f',
+  incTop: { flexDirection: 'row', alignItems: 'center', marginBottom: 8, flexWrap: 'wrap', gap: 6 },
+  incTagWrap: { borderRadius: 8, paddingHorizontal: 10, paddingVertical: 4 },
+  incTag:     { fontSize: 11, fontWeight: '700' },
+  incTime:    { fontSize: 11, color: '#666', flex: 1 },
+  statusBadge:{ borderRadius: 8, paddingHorizontal: 10, paddingVertical: 4 },
+  statusTxt:  { fontSize: 10, fontWeight: '800', color: '#fff', letterSpacing: 0.3 },
+  incTitle:   { fontSize: 17, fontWeight: '900', color: '#111', marginBottom: 6 },
+  incMetaRow: { flexDirection: 'row', marginBottom: 4 },
+  incMeta:    { fontSize: 11, color: '#666' },
+
+  driverRow: {
+    flexDirection: 'row', alignItems: 'center', marginTop: 10,
+    backgroundColor: '#f9f9f9', borderRadius: 10, padding: 10,
   },
-  alertTime: {
-    fontSize: 11,
-    color: '#666',
-    marginTop: 3,
+  driverAvatar: {
+    width: 38, height: 38, borderRadius: 19, backgroundColor: '#ddd',
+    alignItems: 'center', justifyContent: 'center', marginRight: 10,
   },
-  alertDesc: {
-    fontSize: 14,
-    fontWeight: 'bold',
-    marginTop: 8,
+  driverAvatarTxt: { fontSize: 20 },
+  driverInfo:  { flex: 1 },
+  driverLabel: { fontSize: 10, color: '#888', fontWeight: '600', letterSpacing: 0.3 },
+  driverName:  { fontSize: 14, fontWeight: '800', color: '#111' },
+  callBtn: {
+    width: 36, height: 36, borderRadius: 18, backgroundColor: '#e8f5e9',
+    alignItems: 'center', justifyContent: 'center',
   },
-  alertDriver: {
-    fontSize: 12,
-    color: '#666',
-    marginTop: 3,
+  callIco: { fontSize: 18 },
+
+  unitRow: {
+    flexDirection: 'row', alignItems: 'center',
+    backgroundColor: '#e8f0fe', borderRadius: 10, padding: 10, marginTop: 8,
   },
-  alertNetwork: {
-    fontSize: 11,
-    color: '#4caf50',
-    marginTop: 3,
-  },
-  unitBadge: {
-    backgroundColor: '#e8f5e9',
-    padding: 8,
-    borderRadius: 8,
-    marginTop: 8,
-  },
-  unitText: {
-    fontSize: 12,
-    fontWeight: 'bold',
-    color: '#2e7d32',
-    textAlign: 'center',
-  },
+  unitIco: { fontSize: 14, marginRight: 8 },
+  unitTxt: { fontSize: 12, fontWeight: '700', color: '#1565C0' },
+
+  /* Bottom nav */
   bottomNav: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-    backgroundColor: '#0b2b3b',
-    padding: 12,
-    marginTop: 20,
-    marginBottom: 30,
-    borderRadius: 20,
-    marginHorizontal: 16,
+    flexDirection: 'row', justifyContent: 'space-around',
+    backgroundColor: '#fff', borderTopWidth: 1, borderTopColor: '#eee', paddingVertical: 10,
   },
-  navItem: {
-    alignItems: 'center',
-  },
-  navText: {
-    color: 'white',
-    fontSize: 11,
-    fontWeight: 'bold',
-  },
+  navItemActive: { alignItems: 'center', backgroundColor: RED, borderRadius: 12, paddingHorizontal: 16, paddingVertical: 6 },
+  navItem:       { alignItems: 'center' },
+  navIcoActive:  { fontSize: 18, color: '#fff' },
+  navTxtActive:  { fontSize: 10, color: '#fff', fontWeight: '700', marginTop: 2 },
+  navIco:        { fontSize: 18, color: '#aaa' },
+  navTxt:        { fontSize: 10, color: '#aaa', marginTop: 2 },
 });
