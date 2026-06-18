@@ -1,0 +1,13 @@
+{
+  "name": "tsn-alert-service",
+  "version": "1.0.0",
+  "main": "index.js",
+  "dependencies": {
+    "express": "^4.18.2",
+    "mongoose": "^8.0.3",
+    "redis": "^4.6.11",
+    "axios": "^1.6.2",
+    "helmet": "^7.1.0",
+    "dotenv": "^16.3.1"
+  }
+}

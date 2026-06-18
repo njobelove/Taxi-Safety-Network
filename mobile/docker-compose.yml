@@ -1,0 +1,210 @@
+# ── Taxi Safety Network — Docker Compose (local dev) ──────────────────────────
+# Run: docker compose up --build
+# All services start together with hot-reload
+
+networks:
+  tsn-net:
+    driver: bridge
+
+volumes:
+  mongo-data:
+  redis-data:
+
+services:
+
+  # ── MongoDB ────────────────────────────────────────────────────────────────
+  mongo:
+    image: mongo:7.0
+    container_name: tsn-mongo
+    restart: unless-stopped
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: tsn_admin
+      MONGO_INITDB_ROOT_PASSWORD: tsn_secret_2024
+      MONGO_INITDB_DATABASE: tsn_cameroon
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo-data:/data/db
+      - ../docker/mongo-init.js:/docker-entrypoint-initdb.d/mongo-init.js:ro
+    networks:
+      - tsn-net
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── Redis (for Socket.IO adapter + rate limiting) ──────────────────────────
+  redis:
+    image: redis:7.2-alpine
+    container_name: tsn-redis
+    restart: unless-stopped
+    command: redis-server --requirepass tsn_redis_2024
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    networks:
+      - tsn-net
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "tsn_redis_2024", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── API Gateway ────────────────────────────────────────────────────────────
+  api-gateway:
+    build:
+      context: ./services/api-gateway
+      dockerfile: Dockerfile
+    container_name: tsn-api-gateway
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - PORT=3000
+      - NODE_ENV=development
+      - JWT_SECRET=tsn_jwt_secret_cameroon_2024
+      - AUTH_SERVICE_URL=http://auth-service:3001
+      - ALERT_SERVICE_URL=http://alert-service:3002
+      - LOCATION_SERVICE_URL=http://location-service:3003
+      - SMS_SERVICE_URL=http://sms-service:3004
+      - USSD_SERVICE_URL=http://ussd-service:3005
+      - REDIS_URL=redis://:tsn_redis_2024@redis:6379
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - tsn-net
+
+  # ── Auth Service ───────────────────────────────────────────────────────────
+  auth-service:
+    build:
+      context: ./services/auth-service
+      dockerfile: Dockerfile
+    container_name: tsn-auth-service
+    restart: unless-stopped
+    ports:
+      - "3001:3001"
+    environment:
+      - PORT=3001
+      - NODE_ENV=development
+      - MONGO_URI=mongodb://tsn_admin:tsn_secret_2024@mongo:27017/tsn_cameroon?authSource=admin
+      - JWT_SECRET=tsn_jwt_secret_cameroon_2024
+      - JWT_EXPIRES_IN=7d
+      - BCRYPT_ROUNDS=12
+    depends_on:
+      mongo:
+        condition: service_healthy
+    networks:
+      - tsn-net
+
+  # ── Alert Service ──────────────────────────────────────────────────────────
+  alert-service:
+    build:
+      context: ./services/alert-service
+      dockerfile: Dockerfile
+    container_name: tsn-alert-service
+    restart: unless-stopped
+    ports:
+      - "3002:3002"
+    environment:
+      - PORT=3002
+      - NODE_ENV=development
+      - MONGO_URI=mongodb://tsn_admin:tsn_secret_2024@mongo:27017/tsn_cameroon?authSource=admin
+      - REDIS_URL=redis://:tsn_redis_2024@redis:6379
+      - SMS_SERVICE_URL=http://sms-service:3004
+      - SOCKET_SERVICE_URL=http://socket-service:3006
+    depends_on:
+      mongo:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - tsn-net
+
+  # ── Location Service ───────────────────────────────────────────────────────
+  location-service:
+    build:
+      context: ./services/location-service
+      dockerfile: Dockerfile
+    container_name: tsn-location-service
+    restart: unless-stopped
+    ports:
+      - "3003:3003"
+    environment:
+      - PORT=3003
+      - NODE_ENV=development
+      - MONGO_URI=mongodb://tsn_admin:tsn_secret_2024@mongo:27017/tsn_cameroon?authSource=admin
+      - REDIS_URL=redis://:tsn_redis_2024@redis:6379
+      - GOOGLE_MAPS_API_KEY=${GOOGLE_MAPS_API_KEY}
+    depends_on:
+      mongo:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - tsn-net
+
+  # ── SMS Service ────────────────────────────────────────────────────────────
+  sms-service:
+    build:
+      context: ./services/sms-service
+      dockerfile: Dockerfile
+    container_name: tsn-sms-service
+    restart: unless-stopped
+    ports:
+      - "3004:3004"
+    environment:
+      - PORT=3004
+      - NODE_ENV=development
+      - AFRICAS_TALKING_KEY=${AFRICAS_TALKING_KEY}
+      - AFRICAS_TALKING_USERNAME=${AFRICAS_TALKING_USERNAME}
+      - REDIS_URL=redis://:tsn_redis_2024@redis:6379
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - tsn-net
+
+  # ── USSD Service ───────────────────────────────────────────────────────────
+  ussd-service:
+    build:
+      context: ./services/ussd-service
+      dockerfile: Dockerfile
+    container_name: tsn-ussd-service
+    restart: unless-stopped
+    ports:
+      - "3005:3005"
+    environment:
+      - PORT=3005
+      - NODE_ENV=development
+      - MONGO_URI=mongodb://tsn_admin:tsn_secret_2024@mongo:27017/tsn_cameroon?authSource=admin
+      - AFRICAS_TALKING_KEY=${AFRICAS_TALKING_KEY}
+      - AFRICAS_TALKING_USERNAME=${AFRICAS_TALKING_USERNAME}
+      - ALERT_SERVICE_URL=http://alert-service:3002
+    depends_on:
+      mongo:
+        condition: service_healthy
+    networks:
+      - tsn-net
+
+  # ── Socket Service (real-time) ─────────────────────────────────────────────
+  socket-service:
+    build:
+      context: ./services/socket-service
+      dockerfile: Dockerfile
+    container_name: tsn-socket-service
+    restart: unless-stopped
+    ports:
+      - "3006:3006"
+    environment:
+      - PORT=3006
+      - NODE_ENV=development
+      - REDIS_URL=redis://:tsn_redis_2024@redis:6379
+      - JWT_SECRET=tsn_jwt_secret_cameroon_2024
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - tsn-net

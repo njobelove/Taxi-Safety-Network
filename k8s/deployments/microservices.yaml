@@ -1,0 +1,318 @@
+# ── Auth Service ──────────────────────────────────────────────────────────────
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: auth-service
+  namespace: tsn
+  labels:
+    app: auth-service
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: auth-service
+  strategy:
+    type: RollingUpdate
+    rollingUpdate: { maxSurge: 1, maxUnavailable: 0 }
+  template:
+    metadata:
+      labels:
+        app: auth-service
+    spec:
+      containers:
+        - name: auth-service
+          image: tsn/auth-service:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 3001
+          env:
+            - name: PORT
+              value: "3001"
+            - name: MONGO_URI
+              valueFrom:
+                secretKeyRef: { name: tsn-secrets, key: MONGO_URI }
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef: { name: tsn-secrets, key: JWT_SECRET }
+          envFrom:
+            - configMapRef: { name: tsn-config }
+          resources:
+            requests: { memory: "128Mi", cpu: "100m" }
+            limits:   { memory: "256Mi", cpu: "300m" }
+          livenessProbe:
+            httpGet: { path: /health, port: 3001 }
+            initialDelaySeconds: 20
+            periodSeconds: 15
+          readinessProbe:
+            httpGet: { path: /health, port: 3001 }
+            initialDelaySeconds: 10
+            periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: auth-service
+  namespace: tsn
+spec:
+  selector:
+    app: auth-service
+  ports:
+    - port: 3001
+      targetPort: 3001
+  type: ClusterIP
+---
+# ── Alert Service ──────────────────────────────────────────────────────────────
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: alert-service
+  namespace: tsn
+  labels:
+    app: alert-service
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: alert-service
+  strategy:
+    type: RollingUpdate
+    rollingUpdate: { maxSurge: 1, maxUnavailable: 0 }
+  template:
+    metadata:
+      labels:
+        app: alert-service
+    spec:
+      containers:
+        - name: alert-service
+          image: tsn/alert-service:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 3002
+          env:
+            - name: PORT
+              value: "3002"
+            - name: MONGO_URI
+              valueFrom:
+                secretKeyRef: { name: tsn-secrets, key: MONGO_URI }
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef: { name: tsn-secrets, key: REDIS_PASSWORD }
+          envFrom:
+            - configMapRef: { name: tsn-config }
+          resources:
+            requests: { memory: "128Mi", cpu: "100m" }
+            limits:   { memory: "256Mi", cpu: "300m" }
+          livenessProbe:
+            httpGet: { path: /health, port: 3002 }
+            initialDelaySeconds: 20
+            periodSeconds: 15
+          readinessProbe:
+            httpGet: { path: /health, port: 3002 }
+            initialDelaySeconds: 10
+            periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: alert-service
+  namespace: tsn
+spec:
+  selector:
+    app: alert-service
+  ports:
+    - port: 3002
+      targetPort: 3002
+  type: ClusterIP
+---
+# ── Location Service ───────────────────────────────────────────────────────────
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: location-service
+  namespace: tsn
+  labels:
+    app: location-service
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: location-service
+  strategy:
+    type: RollingUpdate
+    rollingUpdate: { maxSurge: 1, maxUnavailable: 0 }
+  template:
+    metadata:
+      labels:
+        app: location-service
+    spec:
+      containers:
+        - name: location-service
+          image: tsn/location-service:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 3003
+          env:
+            - name: PORT
+              value: "3003"
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef: { name: tsn-secrets, key: REDIS_PASSWORD }
+            - name: GOOGLE_MAPS_API_KEY
+              valueFrom:
+                secretKeyRef: { name: tsn-secrets, key: GOOGLE_MAPS_API_KEY }
+          envFrom:
+            - configMapRef: { name: tsn-config }
+          resources:
+            requests: { memory: "128Mi", cpu: "100m" }
+            limits:   { memory: "256Mi", cpu: "200m" }
+          livenessProbe:
+            httpGet: { path: /health, port: 3003 }
+            initialDelaySeconds: 15
+            periodSeconds: 15
+          readinessProbe:
+            httpGet: { path: /health, port: 3003 }
+            initialDelaySeconds: 5
+            periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: location-service
+  namespace: tsn
+spec:
+  selector:
+    app: location-service
+  ports:
+    - port: 3003
+      targetPort: 3003
+  type: ClusterIP
+---
+# ── SMS Service ────────────────────────────────────────────────────────────────
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sms-service
+  namespace: tsn
+  labels:
+    app: sms-service
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: sms-service
+  strategy:
+    type: RollingUpdate
+    rollingUpdate: { maxSurge: 1, maxUnavailable: 0 }
+  template:
+    metadata:
+      labels:
+        app: sms-service
+    spec:
+      containers:
+        - name: sms-service
+          image: tsn/sms-service:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 3004
+          env:
+            - name: PORT
+              value: "3004"
+            - name: MONGO_URI
+              valueFrom:
+                secretKeyRef: { name: tsn-secrets, key: MONGO_URI }
+            - name: AFRICAS_TALKING_KEY
+              valueFrom:
+                secretKeyRef: { name: tsn-secrets, key: AFRICAS_TALKING_KEY }
+            - name: AFRICAS_TALKING_USERNAME
+              valueFrom:
+                secretKeyRef: { name: tsn-secrets, key: AFRICAS_TALKING_USERNAME }
+          envFrom:
+            - configMapRef: { name: tsn-config }
+          resources:
+            requests: { memory: "128Mi", cpu: "100m" }
+            limits:   { memory: "256Mi", cpu: "200m" }
+          livenessProbe:
+            httpGet: { path: /health, port: 3004 }
+            initialDelaySeconds: 20
+            periodSeconds: 15
+          readinessProbe:
+            httpGet: { path: /health, port: 3004 }
+            initialDelaySeconds: 10
+            periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: sms-service
+  namespace: tsn
+spec:
+  selector:
+    app: sms-service
+  ports:
+    - port: 3004
+      targetPort: 3004
+  type: ClusterIP
+---
+# ── Socket Service ─────────────────────────────────────────────────────────────
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: socket-service
+  namespace: tsn
+  labels:
+    app: socket-service
+spec:
+  replicas: 2         # Redis adapter keeps all replicas in sync
+  selector:
+    matchLabels:
+      app: socket-service
+  strategy:
+    type: RollingUpdate
+    rollingUpdate: { maxSurge: 1, maxUnavailable: 0 }
+  template:
+    metadata:
+      labels:
+        app: socket-service
+    spec:
+      containers:
+        - name: socket-service
+          image: tsn/socket-service:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 3006
+          env:
+            - name: PORT
+              value: "3006"
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef: { name: tsn-secrets, key: REDIS_PASSWORD }
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef: { name: tsn-secrets, key: JWT_SECRET }
+          envFrom:
+            - configMapRef: { name: tsn-config }
+          resources:
+            requests: { memory: "256Mi", cpu: "150m" }
+            limits:   { memory: "512Mi", cpu: "400m" }
+          livenessProbe:
+            httpGet: { path: /health, port: 3006 }
+            initialDelaySeconds: 20
+            periodSeconds: 15
+          readinessProbe:
+            httpGet: { path: /health, port: 3006 }
+            initialDelaySeconds: 10
+            periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: socket-service
+  namespace: tsn
+spec:
+  selector:
+    app: socket-service
+  ports:
+    - name: websocket
+      port: 3006
+      targetPort: 3006
+  type: LoadBalancer   # exposed so mobile app can connect directly via WebSocket

@@ -1,0 +1,351 @@
+/**
+ * TSN — Jenkins CI/CD Pipeline
+ * Stages: Checkout → Install → SonarQube Analysis → Test → Build → Push → Deploy
+ *
+ * Required Jenkins credentials (configure in Jenkins → Manage Credentials):
+ *   DOCKER_REGISTRY_CREDS  — Docker Hub or private registry username/password
+ *   SONAR_TOKEN            — SonarQube token
+ *   KUBECONFIG_SECRET      — kubeconfig file for kubectl
+ *   SLACK_WEBHOOK          — Slack webhook URL for notifications
+ */
+
+pipeline {
+  agent any
+
+  environment {
+    // Docker registry — change to your registry
+    REGISTRY         = 'your-dockerhub-username'
+    IMAGE_TAG        = "${env.BUILD_NUMBER}-${env.GIT_COMMIT?.take(7) ?: 'local'}"
+    LATEST_TAG       = 'latest'
+
+    // Kubernetes namespace
+    K8S_NAMESPACE    = 'tsn'
+
+    // SonarQube
+    SONAR_HOST       = 'http://sonarqube:9000'
+    SONAR_PROJECT    = 'tsn-taxi-safety-network'
+
+    // Service list
+    SERVICES         = 'api-gateway auth-service alert-service location-service sms-service ussd-service socket-service'
+  }
+
+  options {
+    timeout(time: 45, unit: 'MINUTES')
+    buildDiscarder(logRotator(numToKeepStr: '10'))
+    disableConcurrentBuilds()
+  }
+
+  triggers {
+    // Poll GitHub every 5 minutes (replace with webhook for production)
+    pollSCM('H/5 * * * *')
+  }
+
+  stages {
+
+    // ── Stage 1: Checkout ──────────────────────────────────────────────────
+    stage('📥 Checkout') {
+      steps {
+        checkout scm
+        script {
+          env.GIT_COMMIT_MSG = sh(
+            script: 'git log -1 --pretty=%B',
+            returnStdout: true
+          ).trim()
+          echo "Branch: ${env.BRANCH_NAME}"
+          echo "Commit: ${env.GIT_COMMIT}"
+          echo "Message: ${env.GIT_COMMIT_MSG}"
+        }
+      }
+    }
+
+    // ── Stage 2: Install dependencies ──────────────────────────────────────
+    stage('📦 Install Dependencies') {
+      parallel {
+        stage('api-gateway') {
+          steps {
+            dir('services/api-gateway') {
+              sh 'npm ci'
+            }
+          }
+        }
+        stage('auth-service') {
+          steps {
+            dir('services/auth-service') {
+              sh 'npm ci'
+            }
+          }
+        }
+        stage('alert-service') {
+          steps {
+            dir('services/alert-service') {
+              sh 'npm ci'
+            }
+          }
+        }
+        stage('location-service') {
+          steps {
+            dir('services/location-service') {
+              sh 'npm ci'
+            }
+          }
+        }
+        stage('sms-service') {
+          steps {
+            dir('services/sms-service') {
+              sh 'npm ci'
+            }
+          }
+        }
+        stage('socket-service') {
+          steps {
+            dir('services/socket-service') {
+              sh 'npm ci'
+            }
+          }
+        }
+      }
+    }
+
+    // ── Stage 3: Run Tests ─────────────────────────────────────────────────
+    stage('🧪 Run Tests') {
+      parallel {
+        stage('auth-service tests') {
+          steps {
+            dir('services/auth-service') {
+              sh 'npm test -- --coverage --coverageReporters=lcov'
+            }
+          }
+          post {
+            always {
+              junit 'services/auth-service/test-results/*.xml'
+            }
+          }
+        }
+        stage('alert-service tests') {
+          steps {
+            dir('services/alert-service') {
+              sh 'npm test -- --coverage --coverageReporters=lcov'
+            }
+          }
+          post {
+            always {
+              junit 'services/alert-service/test-results/*.xml'
+            }
+          }
+        }
+        stage('location-service tests') {
+          steps {
+            dir('services/location-service') {
+              sh 'npm test -- --coverage --coverageReporters=lcov'
+            }
+          }
+        }
+        stage('sms-service tests') {
+          steps {
+            dir('services/sms-service') {
+              sh 'npm test -- --coverage --coverageReporters=lcov'
+            }
+          }
+        }
+      }
+    }
+
+    // ── Stage 4: SonarQube Analysis ───────────────────────────────────────
+    stage('🔍 SonarQube Analysis') {
+      steps {
+        withCredentials([string(credentialsId: 'SONAR_TOKEN', variable: 'SONAR_TOKEN')]) {
+          withSonarQubeEnv('TSN-SonarQube') {
+            sh """
+              npx sonar-scanner \
+                -Dsonar.projectKey=${SONAR_PROJECT} \
+                -Dsonar.projectName='Taxi Safety Network' \
+                -Dsonar.projectVersion=${IMAGE_TAG} \
+                -Dsonar.sources=services \
+                -Dsonar.exclusions=**/node_modules/**,**/coverage/**,**/test-results/**,**/*.test.js \
+                -Dsonar.javascript.lcov.reportPaths=services/auth-service/coverage/lcov.info,services/alert-service/coverage/lcov.info \
+                -Dsonar.testExecutionReportPaths=services/auth-service/test-results/test-results.xml \
+                -Dsonar.host.url=${SONAR_HOST} \
+                -Dsonar.token=${SONAR_TOKEN}
+            """
+          }
+        }
+      }
+    }
+
+    // ── Stage 5: SonarQube Quality Gate ───────────────────────────────────
+    stage('✅ Quality Gate') {
+      steps {
+        timeout(time: 5, unit: 'MINUTES') {
+          waitForQualityGate abortPipeline: true
+        }
+      }
+    }
+
+    // ── Stage 6: Build Docker Images ───────────────────────────────────────
+    stage('🐳 Build Docker Images') {
+      when {
+        anyOf {
+          branch 'main'
+          branch 'staging'
+          branch pattern: 'release/.*', comparator: 'REGEXP'
+        }
+      }
+      steps {
+        script {
+          def services = SERVICES.split(' ')
+          def builds   = [:]
+
+          services.each { svc ->
+            builds[svc] = {
+              echo "Building ${svc}..."
+              sh """
+                docker build \
+                  -t ${REGISTRY}/${svc}:${IMAGE_TAG} \
+                  -t ${REGISTRY}/${svc}:${LATEST_TAG} \
+                  --build-arg BUILD_DATE=\$(date -u +%Y-%m-%dT%H:%M:%SZ) \
+                  --build-arg GIT_COMMIT=${env.GIT_COMMIT} \
+                  --label git-commit=${env.GIT_COMMIT} \
+                  --label build-number=${env.BUILD_NUMBER} \
+                  ./services/${svc}
+              """
+            }
+          }
+          parallel builds
+        }
+      }
+    }
+
+    // ── Stage 7: Security Scan ─────────────────────────────────────────────
+    stage('🔒 Security Scan (Trivy)') {
+      when { branch 'main' }
+      steps {
+        script {
+          sh """
+            docker run --rm \
+              -v /var/run/docker.sock:/var/run/docker.sock \
+              aquasec/trivy:latest image \
+              --exit-code 1 \
+              --severity HIGH,CRITICAL \
+              --ignore-unfixed \
+              ${REGISTRY}/api-gateway:${IMAGE_TAG} || true
+          """
+        }
+      }
+    }
+
+    // ── Stage 8: Push Images ───────────────────────────────────────────────
+    stage('📤 Push to Registry') {
+      when {
+        anyOf { branch 'main'; branch 'staging' }
+      }
+      steps {
+        withCredentials([usernamePassword(
+          credentialsId: 'DOCKER_REGISTRY_CREDS',
+          usernameVariable: 'DOCKER_USER',
+          passwordVariable: 'DOCKER_PASS'
+        )]) {
+          sh 'echo $DOCKER_PASS | docker login -u $DOCKER_USER --password-stdin'
+          script {
+            SERVICES.split(' ').each { svc ->
+              sh "docker push ${REGISTRY}/${svc}:${IMAGE_TAG}"
+              sh "docker push ${REGISTRY}/${svc}:${LATEST_TAG}"
+              echo "✓ Pushed ${svc}"
+            }
+          }
+        }
+      }
+    }
+
+    // ── Stage 9: Deploy to Staging ─────────────────────────────────────────
+    stage('🚀 Deploy to Staging') {
+      when { branch 'staging' }
+      steps {
+        withCredentials([file(credentialsId: 'KUBECONFIG_SECRET', variable: 'KUBECONFIG')]) {
+          sh """
+            export KUBECONFIG=${KUBECONFIG}
+            kubectl set image deployment/api-gateway   api-gateway=${REGISTRY}/api-gateway:${IMAGE_TAG}   -n ${K8S_NAMESPACE}-staging
+            kubectl set image deployment/auth-service  auth-service=${REGISTRY}/auth-service:${IMAGE_TAG}  -n ${K8S_NAMESPACE}-staging
+            kubectl set image deployment/alert-service alert-service=${REGISTRY}/alert-service:${IMAGE_TAG} -n ${K8S_NAMESPACE}-staging
+            kubectl rollout status deployment/api-gateway   -n ${K8S_NAMESPACE}-staging --timeout=120s
+            kubectl rollout status deployment/auth-service  -n ${K8S_NAMESPACE}-staging --timeout=120s
+            kubectl rollout status deployment/alert-service -n ${K8S_NAMESPACE}-staging --timeout=120s
+          """
+        }
+      }
+    }
+
+    // ── Stage 10: Deploy to Production (main branch only) ─────────────────
+    stage('🌍 Deploy to Production') {
+      when { branch 'main' }
+      input {
+        message "Deploy build ${IMAGE_TAG} to PRODUCTION?"
+        ok "Yes, deploy now"
+        submitter "admin,team-lead"
+      }
+      steps {
+        withCredentials([file(credentialsId: 'KUBECONFIG_SECRET', variable: 'KUBECONFIG')]) {
+          sh """
+            export KUBECONFIG=${KUBECONFIG}
+            # Update each deployment image
+            kubectl set image deployment/api-gateway    api-gateway=${REGISTRY}/api-gateway:${IMAGE_TAG}      -n ${K8S_NAMESPACE}
+            kubectl set image deployment/auth-service   auth-service=${REGISTRY}/auth-service:${IMAGE_TAG}    -n ${K8S_NAMESPACE}
+            kubectl set image deployment/alert-service  alert-service=${REGISTRY}/alert-service:${IMAGE_TAG}  -n ${K8S_NAMESPACE}
+            kubectl set image deployment/location-service location-service=${REGISTRY}/location-service:${IMAGE_TAG} -n ${K8S_NAMESPACE}
+            kubectl set image deployment/sms-service    sms-service=${REGISTRY}/sms-service:${IMAGE_TAG}      -n ${K8S_NAMESPACE}
+            kubectl set image deployment/socket-service socket-service=${REGISTRY}/socket-service:${IMAGE_TAG} -n ${K8S_NAMESPACE}
+
+            # Wait for all rollouts to complete
+            for svc in api-gateway auth-service alert-service location-service sms-service socket-service; do
+              echo "Waiting for \$svc..."
+              kubectl rollout status deployment/\$svc -n ${K8S_NAMESPACE} --timeout=180s
+            done
+
+            echo "✅ All services deployed to production"
+            kubectl get pods -n ${K8S_NAMESPACE}
+          """
+        }
+      }
+    }
+
+  }
+
+  // ── Post actions ───────────────────────────────────────────────────────────
+  post {
+    success {
+      slackSend(
+        color: 'good',
+        message: """✅ *TSN Pipeline SUCCESS*
+Branch: `${env.BRANCH_NAME}`
+Build:  `#${env.BUILD_NUMBER}` — `${IMAGE_TAG}`
+Commit: ${env.GIT_COMMIT_MSG}
+<${env.BUILD_URL}|View Build>"""
+      )
+      // Clean up local Docker images to save disk
+      sh "docker image prune -f --filter 'until=24h'"
+    }
+    failure {
+      slackSend(
+        color: 'danger',
+        message: """🚨 *TSN Pipeline FAILED*
+Branch: `${env.BRANCH_NAME}`
+Build:  `#${env.BUILD_NUMBER}`
+Stage:  ${env.STAGE_NAME ?: 'unknown'}
+<${env.BUILD_URL}|View Build>"""
+      )
+    }
+    unstable {
+      slackSend(
+        color: 'warning',
+        message: "⚠ TSN Pipeline UNSTABLE — Build #${env.BUILD_NUMBER} on ${env.BRANCH_NAME}"
+      )
+    }
+    always {
+      // Archive test results
+      archiveArtifacts(
+        artifacts: '**/coverage/**,**/test-results/**',
+        allowEmptyArchive: true
+      )
+      cleanWs()
+    }
+  }
+}

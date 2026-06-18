@@ -1,0 +1,100 @@
+# Jenkins Configuration as Code
+# Applied automatically on startup via CASC_JENKINS_CONFIG env var
+
+jenkins:
+  systemMessage: "TSN — Taxi Safety Network CI/CD"
+  numExecutors: 4
+  mode: NORMAL
+  scmCheckoutRetryCount: 2
+
+  securityRealm:
+    local:
+      allowsSignup: false
+      users:
+        - id: admin
+          password: tsn_jenkins_2024
+          properties:
+            - mailer:
+                emailAddress: admin@tsn-cameroon.com
+
+  authorizationStrategy:
+    roleBased:
+      roles:
+        global:
+          - name: admin
+            description: Full access
+            permissions:
+              - Overall/Administer
+            assignments:
+              - admin
+          - name: developer
+            description: Build and view
+            permissions:
+              - Overall/Read
+              - Job/Build
+              - Job/Read
+              - Job/Workspace
+
+unclassified:
+  location:
+    url: http://localhost:8080/
+    adminAddress: admin@tsn-cameroon.com
+
+  slackNotifier:
+    teamDomain: YOUR_SLACK_WORKSPACE
+    tokenCredentialId: SLACK_WEBHOOK
+    room: '#tsn-cicd'
+
+  sonarGlobalConfiguration:
+    buildWrapperEnabled: true
+    installations:
+      - name: TSN-SonarQube
+        serverUrl: http://sonarqube:9000
+        credentialsId: SONAR_TOKEN
+
+  gitHubConfiguration:
+    apiRateLimitChecker: ThrottleForNormalize
+
+credentials:
+  system:
+    domainCredentials:
+      - credentials:
+          - string:
+              scope: GLOBAL
+              id: SONAR_TOKEN
+              description: SonarQube authentication token
+              secret: "${SONAR_TOKEN}"
+          - usernamePassword:
+              scope: GLOBAL
+              id: DOCKER_REGISTRY_CREDS
+              description: Docker Registry credentials
+              username: "${DOCKER_USER}"
+              password: "${DOCKER_PASS}"
+          - string:
+              scope: GLOBAL
+              id: SLACK_WEBHOOK
+              description: Slack webhook URL
+              secret: "${SLACK_WEBHOOK_URL}"
+
+jobs:
+  - script: |
+      pipelineJob('TSN-Main-Pipeline') {
+        description('Main CI/CD pipeline for Taxi Safety Network')
+        definition {
+          cpsScm {
+            scm {
+              git {
+                remote {
+                  url('https://github.com/YOUR_ORG/taxi-safety-network.git')
+                  credentials('github-token')
+                }
+                branches('*/main', '*/staging', '*/release/*')
+              }
+            }
+            scriptPath('cicd/jenkins/Jenkinsfile')
+          }
+        }
+        triggers {
+          scm('H/5 * * * *')
+        }
+      }

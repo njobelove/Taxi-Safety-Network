@@ -1,0 +1,88 @@
+global:
+  resolve_timeout: 5m
+  # Email config (optional)
+  smtp_from: 'tsn-alerts@tsn-cameroon.com'
+  smtp_smarthost: 'smtp.gmail.com:587'
+  smtp_auth_username: 'YOUR_EMAIL@gmail.com'
+  smtp_auth_password: 'YOUR_APP_PASSWORD'
+
+# ── Notification templates ─────────────────────────────────────────────────────
+templates:
+  - '/etc/alertmanager/templates/*.tmpl'
+
+# ── Routing ────────────────────────────────────────────────────────────────────
+route:
+  group_by: ['alertname', 'service']
+  group_wait:      30s
+  group_interval:  5m
+  repeat_interval: 4h
+  receiver: tsn-team
+
+  routes:
+    # Critical alerts → immediate notification
+    - match:
+        severity: critical
+      receiver: tsn-critical
+      group_wait: 10s
+      repeat_interval: 1h
+
+    # SOS spike → operations team
+    - match:
+        alertname: TSNSOSAlertSpike
+      receiver: tsn-operations
+      group_wait: 10s
+
+    # Infrastructure → team lead
+    - match_re:
+        alertname: TSNMongoDB.*|TSNRedis.*
+      receiver: tsn-infrastructure
+
+# ── Receivers ──────────────────────────────────────────────────────────────────
+receivers:
+
+  # Default team channel
+  - name: tsn-team
+    slack_configs:
+      - api_url: 'YOUR_SLACK_WEBHOOK_URL'
+        channel: '#tsn-alerts'
+        send_resolved: true
+        title: '{{ .GroupLabels.alertname }}'
+        text: |
+          {{ range .Alerts }}
+          *{{ .Annotations.summary }}*
+          {{ .Annotations.description }}
+          {{ end }}
+
+  # Critical — also sends email
+  - name: tsn-critical
+    slack_configs:
+      - api_url: 'YOUR_SLACK_WEBHOOK_URL'
+        channel: '#tsn-critical'
+        send_resolved: true
+        color: '{{ if eq .Status "firing" }}danger{{ else }}good{{ end }}'
+        title: '🚨 CRITICAL: {{ .GroupLabels.alertname }}'
+        text: |
+          {{ range .Alerts }}
+          {{ .Annotations.summary }}
+          {{ .Annotations.description }}
+          {{ end }}
+
+  - name: tsn-operations
+    slack_configs:
+      - api_url: 'YOUR_SLACK_WEBHOOK_URL'
+        channel: '#tsn-operations'
+        send_resolved: true
+
+  - name: tsn-infrastructure
+    slack_configs:
+      - api_url: 'YOUR_SLACK_WEBHOOK_URL'
+        channel: '#tsn-infrastructure'
+        send_resolved: true
+
+# ── Inhibition rules (suppress low-level alerts when critical ones fire) ───────
+inhibit_rules:
+  - source_match:
+      severity: critical
+    target_match:
+      severity: warning
+    equal: ['service']
