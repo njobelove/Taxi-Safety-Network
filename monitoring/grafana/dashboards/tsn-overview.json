@@ -1,0 +1,236 @@
+{
+  "title": "TSN — Taxi Safety Network Overview",
+  "uid": "tsn-overview",
+  "tags": ["tsn", "overview"],
+  "timezone": "Africa/Douala",
+  "refresh": "30s",
+  "time": { "from": "now-1h", "to": "now" },
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "🆘 Active SOS Alerts",
+      "gridPos": { "h": 4, "w": 4, "x": 0, "y": 0 },
+      "targets": [{
+        "expr": "tsn_active_alerts_total",
+        "legendFormat": "Active Alerts"
+      }],
+      "options": {
+        "colorMode": "background",
+        "graphMode": "area",
+        "reduceOptions": { "calcs": ["lastNotNull"] }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "steps": [
+              { "color": "green", "value": 0 },
+              { "color": "yellow", "value": 5 },
+              { "color": "red",    "value": 10 }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "👤 Active Drivers",
+      "gridPos": { "h": 4, "w": 4, "x": 4, "y": 0 },
+      "targets": [{
+        "expr": "tsn_connected_drivers_total",
+        "legendFormat": "Drivers Online"
+      }],
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "fixed", "fixedColor": "blue" }
+        }
+      }
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "🏛 Police Stations Online",
+      "gridPos": { "h": 4, "w": 4, "x": 8, "y": 0 },
+      "targets": [{
+        "expr": "tsn_connected_stations_total",
+        "legendFormat": "Stations"
+      }],
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "fixed", "fixedColor": "purple" }
+        }
+      }
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "📨 SMS Sent (24h)",
+      "gridPos": { "h": 4, "w": 4, "x": 12, "y": 0 },
+      "targets": [{
+        "expr": "increase(tsn_sms_sent_total[24h])",
+        "legendFormat": "SMS"
+      }],
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "fixed", "fixedColor": "orange" }
+        }
+      }
+    },
+    {
+      "id": 5,
+      "type": "stat",
+      "title": "API Gateway Uptime",
+      "gridPos": { "h": 4, "w": 4, "x": 16, "y": 0 },
+      "targets": [{
+        "expr": "up{job='tsn-api-gateway'}",
+        "legendFormat": "Gateway"
+      }],
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            { "options": { "0": { "text": "DOWN", "color": "red" }, "1": { "text": "UP", "color": "green" } }, "type": "value" }
+          ]
+        }
+      }
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "📈 SOS Alert Rate (per minute)",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 4 },
+      "targets": [
+        {
+          "expr": "rate(tsn_sos_alerts_total[1m]) * 60",
+          "legendFormat": "Alerts/min"
+        },
+        {
+          "expr": "rate(tsn_sos_alerts_total{alert_type='theft'}[1m]) * 60",
+          "legendFormat": "Theft"
+        },
+        {
+          "expr": "rate(tsn_sos_alerts_total{alert_type='accident'}[1m]) * 60",
+          "legendFormat": "Accident"
+        },
+        {
+          "expr": "rate(tsn_sos_alerts_total{alert_type='medical'}[1m]) * 60",
+          "legendFormat": "Medical"
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "type": "timeseries",
+      "title": "⚡ API Response Times (P95)",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 4 },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, rate(http_request_duration_ms_bucket{job='tsn-api-gateway'}[5m]))",
+          "legendFormat": "API Gateway P95"
+        },
+        {
+          "expr": "histogram_quantile(0.95, rate(http_request_duration_ms_bucket{job='tsn-alert-service'}[5m]))",
+          "legendFormat": "Alert Service P95"
+        },
+        {
+          "expr": "histogram_quantile(0.95, rate(http_request_duration_ms_bucket{job='tsn-auth-service'}[5m]))",
+          "legendFormat": "Auth Service P95"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms",
+          "thresholds": {
+            "steps": [
+              { "color": "green", "value": 0 },
+              { "color": "yellow", "value": 500 },
+              { "color": "red",    "value": 2000 }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": 8,
+      "type": "timeseries",
+      "title": "🖥 Services Health Status",
+      "gridPos": { "h": 6, "w": 12, "x": 0, "y": 12 },
+      "targets": [{
+        "expr": "up{job=~'tsn-.*'}",
+        "legendFormat": "{{ service }}"
+      }],
+      "fieldConfig": {
+        "defaults": {
+          "min": 0, "max": 1,
+          "mappings": [
+            { "options": { "0": { "text": "DOWN" }, "1": { "text": "UP" } }, "type": "value" }
+          ]
+        }
+      }
+    },
+    {
+      "id": 9,
+      "type": "timeseries",
+      "title": "🔌 Socket.IO Active Connections",
+      "gridPos": { "h": 6, "w": 12, "x": 12, "y": 12 },
+      "targets": [{
+        "expr": "tsn_socket_connections_total",
+        "legendFormat": "Connected Clients"
+      }]
+    },
+    {
+      "id": 10,
+      "type": "timeseries",
+      "title": "🗄 MongoDB Operations/sec",
+      "gridPos": { "h": 6, "w": 8, "x": 0, "y": 18 },
+      "targets": [
+        {
+          "expr": "rate(mongodb_op_counters_total{type='insert'}[1m])",
+          "legendFormat": "Inserts"
+        },
+        {
+          "expr": "rate(mongodb_op_counters_total{type='query'}[1m])",
+          "legendFormat": "Queries"
+        },
+        {
+          "expr": "rate(mongodb_op_counters_total{type='update'}[1m])",
+          "legendFormat": "Updates"
+        }
+      ]
+    },
+    {
+      "id": 11,
+      "type": "timeseries",
+      "title": "📦 Redis Memory Usage",
+      "gridPos": { "h": 6, "w": 8, "x": 8, "y": 18 },
+      "targets": [{
+        "expr": "redis_memory_used_bytes",
+        "legendFormat": "Used Memory"
+      }],
+      "fieldConfig": { "defaults": { "unit": "bytes" } }
+    },
+    {
+      "id": 12,
+      "type": "gauge",
+      "title": "💾 Host Memory Usage",
+      "gridPos": { "h": 6, "w": 8, "x": 16, "y": 18 },
+      "targets": [{
+        "expr": "(node_memory_MemTotal_bytes - node_memory_MemAvailable_bytes) / node_memory_MemTotal_bytes * 100",
+        "legendFormat": "Memory %"
+      }],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "min": 0, "max": 100,
+          "thresholds": {
+            "steps": [
+              { "color": "green",  "value": 0  },
+              { "color": "yellow", "value": 70 },
+              { "color": "red",    "value": 85 }
+            ]
+          }
+        }
+      }
+    }
+  ]
+}

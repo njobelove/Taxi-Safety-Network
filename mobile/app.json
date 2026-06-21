@@ -1,0 +1,29 @@
+{
+  "expo": {
+    "name": "TaxiSafetyNetwork",
+    "slug": "taxi-safety-network",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "icon": "./assets/icon.png",
+    "splash": {
+      "resizeMode": "contain",
+      "backgroundColor": "#d32f2f"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.tsn.taxisafetynetwork"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#d32f2f"
+      },
+      "package": "com.tsn.taxisafetynetwork"
+    },
+    "web": {
+      "bundler": "metro"
+    },
+    "plugins": ["expo-location"]
+  }
+}
