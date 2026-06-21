@@ -3,18 +3,6 @@ kind: Namespace
 metadata:
   name: tsn-quality
 ---
-# PostgreSQL for SonarQube
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: sonar-postgres-pvc
-  namespace: tsn-quality
-spec:
-  accessModes: [ReadWriteOnce]
-  resources:
-    requests:
-      storage: 10Gi
----
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -55,8 +43,7 @@ spec:
             periodSeconds: 5
       volumes:
         - name: postgres-storage
-          persistentVolumeClaim:
-            claimName: sonar-postgres-pvc
+          emptyDir: {}
 ---
 apiVersion: v1
 kind: Service
@@ -70,29 +57,6 @@ spec:
     - port: 5432
       targetPort: 5432
   type: ClusterIP
----
-# SonarQube PVCs
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: sonarqube-data-pvc
-  namespace: tsn-quality
-spec:
-  accessModes: [ReadWriteOnce]
-  resources:
-    requests:
-      storage: 10Gi
----
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: sonarqube-extensions-pvc
-  namespace: tsn-quality
-spec:
-  accessModes: [ReadWriteOnce]
-  resources:
-    requests:
-      storage: 5Gi
 ---
 # SonarQube Deployment
 apiVersion: apps/v1
@@ -151,11 +115,9 @@ spec:
             timeoutSeconds: 10
       volumes:
         - name: sonarqube-data
-          persistentVolumeClaim:
-            claimName: sonarqube-data-pvc
+          emptyDir: {}
         - name: sonarqube-extensions
-          persistentVolumeClaim:
-            claimName: sonarqube-extensions-pvc
+          emptyDir: {}
 ---
 apiVersion: v1
 kind: Service

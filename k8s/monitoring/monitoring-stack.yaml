@@ -43,18 +43,6 @@ data:
           - source_labels: [__meta_kubernetes_pod_label_app]
             target_label: service
 ---
-# ── Prometheus PVC ─────────────────────────────────────────────────────────────
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: prometheus-pvc
-  namespace: tsn-monitoring
-spec:
-  accessModes: [ReadWriteOnce]
-  resources:
-    requests:
-      storage: 20Gi
----
 # ── Prometheus Deployment ──────────────────────────────────────────────────────
 apiVersion: apps/v1
 kind: Deployment
@@ -95,8 +83,7 @@ spec:
           configMap:
             name: prometheus-config
         - name: storage
-          persistentVolumeClaim:
-            claimName: prometheus-pvc
+          emptyDir: {}
 ---
 apiVersion: v1
 kind: Service
@@ -111,18 +98,7 @@ spec:
       targetPort: 9090
   type: ClusterIP
 ---
-# ── Grafana PVC ────────────────────────────────────────────────────────────────
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: grafana-pvc
-  namespace: tsn-monitoring
-spec:
-  accessModes: [ReadWriteOnce]
-  resources:
-    requests:
-      storage: 5Gi
----
+
 # ── Grafana Deployment ─────────────────────────────────────────────────────────
 apiVersion: apps/v1
 kind: Deployment
@@ -157,8 +133,7 @@ spec:
             limits:   { memory: "512Mi", cpu: "300m" }
       volumes:
         - name: grafana-storage
-          persistentVolumeClaim:
-            claimName: grafana-pvc
+          emptyDir: {}
 ---
 apiVersion: v1
 kind: Service

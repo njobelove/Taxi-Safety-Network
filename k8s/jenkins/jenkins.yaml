@@ -3,17 +3,6 @@ kind: Namespace
 metadata:
   name: tsn-cicd
 ---
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: jenkins-pvc
-  namespace: tsn-cicd
-spec:
-  accessModes: [ReadWriteOnce]
-  resources:
-    requests:
-      storage: 20Gi
----
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -62,8 +51,7 @@ spec:
             periodSeconds: 15
       volumes:
         - name: jenkins-home
-          persistentVolumeClaim:
-            claimName: jenkins-pvc
+          emptyDir: {}
         - name: docker-sock
           hostPath:
             path: /var/run/docker.sock
