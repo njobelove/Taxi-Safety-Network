@@ -214,12 +214,25 @@ export default function ProfileSetupScreen({ nav }) {
   // ── LOGOUT ───────────────────────────────────────────────────────────────────
   const handleLogout = () => {
     Alert.alert(
-      'Logout',
-      'Are you sure you want to logout?',
+      'Logout / Déconnexion',
+      'Are you sure you want to logout?\n\nYou can log back in with any account.',
       [
         { text: 'Cancel', style: 'cancel' },
-        { text: 'Logout', style: 'destructive',
-          onPress: () => { logout(); nav('login'); } }
+        {
+          text: 'YES — LOGOUT',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              // Stop any playing audio
+              await soundObj?.stopAsync();
+              await soundObj?.unloadAsync();
+            } catch (e) {}
+            // Clear auth state
+            logout();
+            // Force navigate to login
+            setTimeout(() => nav('login'), 100);
+          }
+        }
       ]
     );
   };
@@ -409,7 +422,14 @@ export default function ProfileSetupScreen({ nav }) {
           ))}
         </View>
 
-        <TouchableOpacity style={s.logoutBtn} onPress={handleLogout}>
+        {/* Direct logout - no Alert needed */}
+        <TouchableOpacity
+          style={s.logoutBtn}
+          onPress={() => {
+            logout();
+            nav('login');
+          }}
+        >
           <Text style={s.logoutTxt}>🚪  LOGOUT / DÉCONNEXION</Text>
         </TouchableOpacity>
 
