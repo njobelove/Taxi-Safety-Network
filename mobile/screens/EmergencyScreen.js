@@ -5,7 +5,7 @@ import {
   ActivityIndicator, Alert, Vibration, Linking,
 } from 'react-native';
 import { Audio } from 'expo-av';
-import { createSOSAlert } from '../services/api';
+import { triggerSOS } from '../services/sosService';
 import { useAuth } from '../services/AuthContext';
 
 const RED  = '#d32f2f';
@@ -51,73 +51,9 @@ export default function EmergencyScreen({ nav, location }) {
       Alert.alert('Select Alert Type', 'Please choose an incident type first.');
       return;
     }
-
     setSending(true);
-
-    // ── 1. Vibrate ────────────────────────────────────────────────────────────
-    Vibration.vibrate([0, 300, 100, 300, 100, 500]);
-
-    // ── 2. Play saved voice note immediately ──────────────────────────────────
-    if (voiceUri) {
-      await playVoiceAlert();
-    }
-
-    const lat      = location?.latitude?.toFixed(5)  || '3.84800';
-    const lng      = location?.longitude?.toFixed(5) || '11.50210';
-    const mapsLink = `https://maps.google.com?q=${lat},${lng}`;
-    const driverName = user?.fullName    || 'Unknown Driver';
-    const badgeId    = user?.badgeId     || 'UNKNOWN';
-    const plate      = user?.vehiclePlate || 'UNKNOWN';
-    const network    = user?.network      || 'MTN';
-
-    const smsBody = encodeURIComponent(
-      `🚨 TSN EMERGENCY ALERT 🚨\n` +
-      `Driver: ${driverName}\n` +
-      `Badge:  ${badgeId}\n` +
-      `Plate:  ${plate}\n` +
-      `Type:   ${selected.toUpperCase()}\n` +
-      `GPS:    ${lat}° N, ${lng}° E\n` +
-      `Maps:   ${mapsLink}\n` +
-      `Time:   ${new Date().toLocaleTimeString()}\n` +
-      `Network: ${network}\n\n` +
-      `PLEASE RESPOND IMMEDIATELY`
-    );
-
-    // ── 3. Send to backend → notifies all connected police + drivers ──────────
-    try {
-      await createSOSAlert({
-        driverId:      badgeId,
-        driverName,
-        phoneNumber:   user?.phoneNumber || '',
-        network,
-        vehiclePlate:  plate,
-        alertType:     selected,
-        location: {
-          lat:     parseFloat(lat),
-          lng:     parseFloat(lng),
-          address: `${lat}° N, ${lng}° E`,
-        },
-        triggerMethod: 'manual',
-        hasVoiceNote:  !!voiceUri,
-        timestamp:     new Date().toISOString(),
-      }, token);
-    } catch (e) {
-      console.log('Backend alert error:', e.message);
-    }
-
+    await triggerSOS({ user, location, voiceUri, token, nav });
     setSending(false);
-
-    // ── 4. Show action options ────────────────────────────────────────────────
-    Alert.alert(
-      '🚨 SOS ACTIVATED — HELP IS COMING',
-      `✅ Alert sent to all nearby police & drivers\n${voiceUri ? '🎙 Your voice note is playing\n' : ''}📍 Location: ${lat}° N, ${lng}° E\n\nSelect additional action:`,
-      [
-        { text: '📞 Call Police (117)',    onPress: () => Linking.openURL('tel:117')                              },
-        { text: '📱 SMS Police Station',  onPress: () => Linking.openURL(`sms:+237222221234?body=${smsBody}`)    },
-        { text: '🗺 Share My Location',   onPress: () => Linking.openURL(mapsLink)                               },
-        { text: '✅ Done',                 onPress: () => nav('confirmation')                                     },
-      ]
-    );
   };
 
   return (

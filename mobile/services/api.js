@@ -72,3 +72,7 @@ export const updateLiveLocation = (data) =>
 
 export const getLiveDrivers = () =>
   apiRequest('/api/drivers/live');
+
+// ── POLICE CONTACTS ───────────────────────────────────────────────────────────
+export const getPoliceContacts = () =>
+  apiRequest('/api/contacts/police');
