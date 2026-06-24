@@ -14,26 +14,29 @@ import AlertDetailsScreen  from './screens/AlertDetailsScreen';
 import ProfileSetupScreen  from './screens/ProfileSetupScreen';
 import StatisticsScreen    from './screens/StatisticsScreen';
 import ChatBoardScreen     from './screens/ChatBoardScreen';
+import LiveMapScreen       from './screens/LiveMapScreen';
 
 function Navigator() {
   const { user, role, loading } = useAuth();
   const [screen,   setScreen]   = useState('login');
   const [location, setLocation] = useState(null);
 
-  // ── Navigate when auth state changes ─────────────────────────────────────
+  // ── This runs every time user or role changes ──────────────────────────────
+  // When logout() is called → user becomes null → this sets screen to 'login'
   useEffect(() => {
     if (loading) return;
+
     if (user && role === 'driver') {
       setScreen('driverDashboard');
     } else if (user && role === 'police') {
       setScreen('policeDashboard');
     } else {
-      // User logged out or no session — go to login
+      // No user = logged out → go to login
       setScreen('login');
     }
   }, [user, role, loading]);
 
-  // ── GPS tracking ──────────────────────────────────────────────────────────
+  // ── GPS ───────────────────────────────────────────────────────────────────
   useEffect(() => {
     let subscription;
     (async () => {
@@ -77,6 +80,7 @@ function Navigator() {
     case 'profileSetup':    return <ProfileSetupScreen    {...p} />;
     case 'statistics':      return <StatisticsScreen      {...p} />;
     case 'chatBoard':       return <ChatBoardScreen       {...p} />;
+    case 'liveMap':         return <LiveMapScreen         {...p} />;
     default:                return <LoginScreen           {...p} />;
   }
 }

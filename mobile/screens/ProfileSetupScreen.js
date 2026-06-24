@@ -422,7 +422,14 @@ export default function ProfileSetupScreen({ nav }) {
           ))}
         </View>
 
-        <TouchableOpacity style={s.logoutBtn} onPress={handleLogout}>
+        {/* Direct logout - no Alert needed */}
+        <TouchableOpacity
+          style={s.logoutBtn}
+          onPress={() => {
+            logout();
+            nav('login');
+          }}
+        >
           <Text style={s.logoutTxt}>🚪  LOGOUT / DÉCONNEXION</Text>
         </TouchableOpacity>
 
