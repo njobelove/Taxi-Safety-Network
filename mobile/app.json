@@ -1,29 +1,69 @@
 {
   "expo": {
-    "name": "TaxiSafetyNetwork",
+    "name": "Taxi Safety Network",
     "slug": "taxi-safety-network",
     "version": "1.0.0",
     "orientation": "portrait",
-    "userInterfaceStyle": "light",
     "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
     "splash": {
+      "image": "./assets/splash.png",
       "resizeMode": "contain",
-      "backgroundColor": "#d32f2f"
-    },
-    "ios": {
-      "supportsTablet": true,
-      "bundleIdentifier": "com.tsn.taxisafetynetwork"
+      "backgroundColor": "#ffffff"
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#d32f2f"
+        "backgroundColor": "#ffffff"
       },
-      "package": "com.tsn.taxisafetynetwork"
+      "config": {
+        "googleMaps": {
+          "apiKey": "AIzaSyD8s4b7Y3VTqX2mN9pL6kR1wE5fH0cJ4uQ"
+        }
+      },
+      "permissions": [
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_COARSE_LOCATION",
+        "RECORD_AUDIO",
+        "READ_EXTERNAL_STORAGE",
+        "WRITE_EXTERNAL_STORAGE",
+        "CAMERA",
+        "CALL_PHONE"
+      ]
+    },
+    "ios": {
+      "supportsTablet": true,
+      "infoPlist": {
+        "NSLocationWhenInUseUsageDescription": "TSN needs location to send accurate emergency alerts.",
+        "NSMicrophoneUsageDescription": "TSN needs microphone to record your voice identity note.",
+        "NSPhotoLibraryUsageDescription": "TSN needs photo library access to update your profile photo.",
+        "NSCameraUsageDescription": "TSN needs camera to take your profile photo."
+      }
     },
     "web": {
+      "favicon": "./assets/favicon.png",
       "bundler": "metro"
     },
-    "plugins": ["expo-location"]
+    "plugins": [
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "TSN needs location for emergency alerts."
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "TSN needs photo library to update your profile picture.",
+          "cameraPermission": "TSN needs camera to take your profile photo."
+        }
+      ],
+      [
+        "expo-av",
+        {
+          "microphonePermission": "TSN needs microphone to record your voice ID."
+        }
+      ]
+    ]
   }
 }
