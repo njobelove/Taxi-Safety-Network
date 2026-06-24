@@ -50,7 +50,10 @@ export default function PoliceDashboard({ nav }) {
   // ── Start voice loop whenever alerts change ────────────────────────────────
   useEffect(() => {
     if (alerts.length > 0 && !voiceMuted) {
-      buildQueueAndPlay();
+      // Small delay to ensure audio system is ready
+      setTimeout(() => {
+        buildQueueAndPlay();
+      }, 300);
     } else {
       stopAllVoice();
     }
@@ -149,7 +152,7 @@ export default function PoliceDashboard({ nav }) {
           sound.unloadAsync();
           // Small pause between voice notes then play next
           if (loopingRef.current) {
-            setTimeout(() => playNextInQueue(), 2000);
+            setTimeout(() => playNextInQueue(), 500);
           }
         }
       });

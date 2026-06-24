@@ -2,28 +2,40 @@ import React, { useEffect, useRef, useState } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity,
   ScrollView, SafeAreaView, StatusBar,
-  Animated, Vibration, Alert,
+  Animated, Linking, Alert,
 } from 'react-native';
-import { getStats, updateDriverLocation } from '../services/api';
+import { getStats, updateDriverLocation, getAllAlerts } from '../services/api';
+import { triggerSOS } from '../services/sosService';
 import { useAuth } from '../services/AuthContext';
 
-const RED  = '#d32f2f';
-const GOLD = '#f5c518';
-const BLUE = '#1565C0';
+const RED   = '#d32f2f';
+const GOLD  = '#f5c518';
+const BLUE  = '#1565C0';
+const GREEN = '#2e7d32';
 
 export default function DriverDashboard({ nav, location }) {
   const pulse      = useRef(new Animated.Value(1)).current;
-  const { user, token } = useAuth();
-  const [stats, setStats] = useState(null);
+  const { user, token, voiceUri } = useAuth();
+  const [stats,        setStats]        = useState(null);
+  const [activeAlerts, setActiveAlerts] = useState([]);
+  const [sosCountdown, setSosCountdown] = useState(null);
+  const [sosSending,   setSosSending]   = useState(false);
+  const countRef   = useRef(null);
+  const pressedRef = useRef(false);
 
   useEffect(() => {
     Animated.loop(
       Animated.sequence([
-        Animated.timing(pulse, { toValue: 1.05, duration: 800, useNativeDriver: true }),
-        Animated.timing(pulse, { toValue: 1,    duration: 800, useNativeDriver: true }),
+        Animated.timing(pulse, { toValue: 1.08, duration: 700, useNativeDriver: true }),
+        Animated.timing(pulse, { toValue: 1,    duration: 700, useNativeDriver: true }),
       ])
     ).start();
-    loadStats();
+    loadData();
+    const interval = setInterval(loadData, 15000);
+    return () => {
+      clearInterval(interval);
+      if (countRef.current) clearInterval(countRef.current);
+    };
   }, []);
 
   useEffect(() => {
@@ -37,111 +49,267 @@ export default function DriverDashboard({ nav, location }) {
     }
   }, [location]);
 
-  const loadStats = async () => {
+  const loadData = async () => {
     try {
-      const data = await getStats();
-      setStats(data);
+      const [statsData, alertsData] = await Promise.all([
+        getStats(),
+        getAllAlerts(),
+      ]);
+      setStats(statsData);
+      const active = (alertsData.alerts || []).filter(
+        a => a.status !== 'resolved'
+      );
+      setActiveAlerts(active);
     } catch (e) {}
   };
 
-  const handleSOSPress = () => {
-    Vibration.vibrate([0, 200, 100, 200]);
-    nav('emergency');
+  // ── SOS BUTTON HOLD START ─────────────────────────────────────────────────
+  const handlePressIn = () => {
+    pressedRef.current = true;
+    let count = 3;
+    setSosCountdown(count);
+
+    countRef.current = setInterval(() => {
+      count--;
+      if (!pressedRef.current) {
+        clearInterval(countRef.current);
+        setSosCountdown(null);
+        return;
+      }
+      setSosCountdown(count);
+      if (count <= 0) {
+        clearInterval(countRef.current);
+        setSosCountdown(null);
+        handleInstantSOS();
+      }
+    }, 1000);
   };
 
-  const handleSOSLongPress = () => {
-    Vibration.vibrate([0, 200, 100, 200, 100, 200]);
-    Alert.alert(
-      '🚨 SOS ACTIVATED',
-      'Emergency alert is being sent to Central Command!\n\nYour location and ID are being transmitted.',
-      [
-        { text: 'CANCEL', style: 'cancel' },
-        { text: 'CONFIRM SOS', style: 'destructive', onPress: () => nav('disactivation') }
-      ]
-    );
+  // ── SOS BUTTON RELEASED EARLY ─────────────────────────────────────────────
+  const handlePressOut = () => {
+    pressedRef.current = false;
+    if (countRef.current) {
+      clearInterval(countRef.current);
+      setSosCountdown(null);
+    }
+  };
+
+  // ── INSTANT SOS — called after 3 second hold ──────────────────────────────
+  const handleInstantSOS = async () => {
+    if (sosSending) return;
+    setSosSending(true);
+    await triggerSOS({ user, location, voiceUri, token, nav });
+    setSosSending(false);
+    loadData(); // refresh alerts
+  };
+
+  // ── SINGLE TAP — go to emergency screen ──────────────────────────────────
+  const handleTap = () => {
+    if (!sosCountdown) {
+      nav('emergency');
+    }
+  };
+
+  const formatTime = (ts) => {
+    if (!ts) return '—';
+    const diff = Math.floor((Date.now() - new Date(ts)) / 60000);
+    if (diff < 1) return 'Just now';
+    if (diff < 60) return `${diff}m ago`;
+    return `${Math.floor(diff / 60)}h ago`;
+  };
+
+  const ALERT_COLORS = {
+    robbery: RED, assault: '#e65100', accident: BLUE,
+    medical: '#827717', theft: '#6a1b9a', sos: RED,
   };
 
   return (
     <SafeAreaView style={s.safe}>
       <StatusBar barStyle="dark-content" backgroundColor="#f5f5f5" />
 
-      {/* Top bar */}
+      {/* Header */}
       <View style={s.topBar}>
         <View style={s.topLeft}>
-          <View style={s.shieldWrap}><Text style={s.shieldIco}>🛡</Text></View>
+          <View style={s.shieldWrap}>
+            <Text style={s.shieldIco}>🛡</Text>
+          </View>
           <View>
-            <Text style={s.appName}>TAXI SAFETY{'\n'}NETWORK</Text>
-            <Text style={s.appFr}>RÉSEAU DE SÉCURITÉ{'\n'}DES TAXIS</Text>
+            <Text style={s.appName}>TAXI SAFETY NETWORK</Text>
+            <Text style={s.appFr}>{user?.badgeId || '—'}  ·  {user?.city || 'Yaoundé'}</Text>
           </View>
         </View>
         <View style={s.topRight}>
           <View style={s.mtnBadge}>
-            <Text style={s.mtnTxt}>{user?.network || 'MTN'}{'\n'}CM</Text>
-            <Text style={s.mtnArrow}>▶</Text>
+            <Text style={s.mtnTxt}>{user?.network || 'MTN'}</Text>
           </View>
-          <Text style={s.connTxt}>CONNECTED</Text>
-          <Text style={{ fontSize: 16, marginTop: 2 }}>📶</Text>
+          <Text style={s.connTxt}>● ONLINE</Text>
         </View>
       </View>
 
       <ScrollView showsVerticalScrollIndicator={false}>
 
-        {/* Driver identity card */}
-        <View style={s.idRow}>
-          <View style={s.idCard}>
-            <Text style={s.idLabel}>DRIVER IDENTITY /{'\n'}IDENTITÉ DU CHAUFFEUR</Text>
-            <Text style={s.idNum}>{user?.badgeId || 'TX-YDE-001'}</Text>
-            <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 6 }}>
-              <Text style={{ fontSize: 13, marginRight: 4 }}>📍</Text>
-              <Text style={s.distTxt}>{user?.city || 'Yaoundé'} District</Text>
-            </View>
-          </View>
-          <View style={s.dutyCard}>
-            <View style={s.dutyShield}><Text style={{ fontSize: 18, color: '#fff' }}>✔</Text></View>
-            <Text style={s.dutyTxt}>ACTIVE{'\n'}DUTY</Text>
-            <Text style={s.dutyFr}>EN{'\n'}SERVICE</Text>
-          </View>
-        </View>
-
-        {/* Live stats */}
+        {/* Stats */}
         {stats && (
           <View style={s.statsRow}>
-            <View style={[s.statMini, { backgroundColor: RED }]}>
-              <Text style={s.statMiniNum}>{stats.pendingAlerts || 0}</Text>
-              <Text style={s.statMiniLbl}>ACTIVE{'\n'}ALERTS</Text>
-            </View>
-            <View style={[s.statMini, { backgroundColor: BLUE }]}>
-              <Text style={s.statMiniNum}>{stats.resolvedAlerts || 0}</Text>
-              <Text style={s.statMiniLbl}>RESOLVED{'\n'}TODAY</Text>
-            </View>
-            <View style={[s.statMini, { backgroundColor: '#4caf50' }]}>
-              <Text style={s.statMiniNum}>{stats.registeredDrivers || 0}</Text>
-              <Text style={s.statMiniLbl}>DRIVERS{'\n'}ONLINE</Text>
-            </View>
+            {[
+              [stats.pendingAlerts    || 0, 'ACTIVE\nALERTS',  RED  ],
+              [stats.resolvedAlerts   || 0, 'RESOLVED',        GREEN],
+              [stats.registeredDrivers|| 0, 'DRIVERS\nONLINE', BLUE ],
+            ].map(([num, lbl, col], i) => (
+              <View key={i} style={[s.statMini, { backgroundColor: col }]}>
+                <Text style={s.statNum}>{num}</Text>
+                <Text style={s.statLbl}>{lbl}</Text>
+              </View>
+            ))}
           </View>
         )}
 
-        {/* PANIC BUTTON */}
-        <View style={s.panicOuter}>
-          <View style={s.diamondGold}>
-            <View style={s.diamondInner}>
-              <Animated.View style={{ transform: [{ scale: pulse }] }}>
-                <TouchableOpacity
-                  style={s.panicBtn}
-                  onPress={handleSOSPress}
-                  onLongPress={handleSOSLongPress}
-                  delayLongPress={3000}
-                  activeOpacity={0.88}
-                >
-                  <Text style={s.panicIco}>📍</Text>
-                  <Text style={s.panicTxt}>PANIC</Text>
-                  <Text style={s.panicTxt}>BOUTON</Text>
-                </TouchableOpacity>
-              </Animated.View>
+        {/* Active alerts notification */}
+        {activeAlerts.length > 0 && (
+          <View style={s.alertsSection}>
+            <View style={s.alertsHeader}>
+              <Text style={s.alertsTitle}>
+                🚨 {activeAlerts.length} ACTIVE ALERT{activeAlerts.length > 1 ? 'S' : ''} NEARBY
+              </Text>
+              <TouchableOpacity onPress={loadData}>
+                <Text style={s.refreshTxt}>↻</Text>
+              </TouchableOpacity>
             </View>
+            {activeAlerts.slice(0, 3).map((alert) => {
+              const col = ALERT_COLORS[alert.alertType] || RED;
+              const lat = alert.location?.lat;
+              const lng = alert.location?.lng;
+              return (
+                <TouchableOpacity
+                  key={alert._id || alert.id}
+                  style={[s.alertMini, { borderLeftColor: col }]}
+                  onPress={() => lat && Linking.openURL(
+                    `https://maps.google.com?q=${lat},${lng}`
+                  )}
+                >
+                  <View style={[s.alertDot, { backgroundColor: col }]} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={s.alertType}>
+                      {alert.alertType?.toUpperCase() || 'SOS'}  ·  {alert.driverName || '—'}
+                    </Text>
+                    <Text style={s.alertLocation}>
+                      📍 {alert.location?.address ||
+                        (lat ? `${parseFloat(lat).toFixed(3)}° N` : 'Location unknown')}
+                    </Text>
+                    <Text style={s.alertTime}>
+                      🕐 {formatTime(alert.timestamp || alert.createdAt)}
+                    </Text>
+                  </View>
+                  <Text style={{ fontSize: 18 }}>🗺</Text>
+                </TouchableOpacity>
+              );
+            })}
+            {activeAlerts.length > 3 && (
+              <Text style={s.moreAlerts}>
+                +{activeAlerts.length - 3} more alerts...
+              </Text>
+            )}
           </View>
-          <Text style={s.panicHint}>TAP FOR EMERGENCY MENU{'\n'}HOLD 3s FOR INSTANT SOS</Text>
-          <Text style={s.panicHintFr}>APPUYER POUR MENU / MAINTENIR 3S POUR SOS</Text>
+        )}
+
+        {/* GPS */}
+        {location && (
+          <View style={s.locationCard}>
+            <View style={s.locationTop}>
+              <View style={s.livePing} />
+              <Text style={s.locationTitle}>📍 LIVE LOCATION</Text>
+              <TouchableOpacity
+                onPress={() => Linking.openURL(
+                  `https://www.google.com/maps?q=${location.latitude},${location.longitude}&z=16`
+                )}
+                style={s.openMapsBtn}
+              >
+                <Text style={s.openMapsTxt}>Open Maps →</Text>
+              </TouchableOpacity>
+            </View>
+            <Text style={s.coordsTxt}>
+              {location.latitude.toFixed(5)}° N,  {location.longitude.toFixed(5)}° E
+            </Text>
+          </View>
+        )}
+
+        {/* SOS PANIC BUTTON */}
+        <View style={s.panicSection}>
+
+          {/* Instructions */}
+          <View style={s.instructBox}>
+            <Text style={s.instructTitle}>
+              {sosCountdown
+                ? `🔴 HOLD... ${sosCountdown}`
+                : sosSending
+                ? '🚨 SENDING SOS...'
+                : '🔴 PANIC BUTTON'}
+            </Text>
+            <Text style={s.instructSub}>
+              {sosCountdown
+                ? 'Keep holding... SOS will fire automatically'
+                : 'HOLD 3 SECONDS → Instant SOS (no selection needed)\nSINGLE TAP → Select incident type'}
+            </Text>
+          </View>
+
+          {/* Diamond button */}
+          <View style={s.panicOuter}>
+            <Animated.View style={{
+              transform: [{ scale: pulse }],
+              width: 220, height: 220,
+              backgroundColor: sosCountdown ? RED : GOLD,
+              transform: [{ rotate: '45deg' }, { scale: sosCountdown ? 1.05 : 1 }],
+              borderRadius: 12,
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}>
+              <View style={{
+                width: 180, height: 180,
+                backgroundColor: 'rgba(255,255,255,0.15)',
+                borderRadius: 8,
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}>
+                <TouchableOpacity
+                  style={[s.panicBtn, {
+                    backgroundColor: sosSending ? '#8B0000' : sosCountdown ? '#8B0000' : RED,
+                  }]}
+                  onPress={handleTap}
+                  onPressIn={handlePressIn}
+                  onPressOut={handlePressOut}
+                  activeOpacity={0.9}
+                >
+                  <View style={{ transform: [{ rotate: '-45deg' }], alignItems: 'center' }}>
+                    {sosSending ? (
+                      <>
+                        <Text style={{ fontSize: 28 }}>📡</Text>
+                        <Text style={s.panicTxt}>SENDING</Text>
+                      </>
+                    ) : sosCountdown ? (
+                      <Text style={[s.panicTxt, { fontSize: 52, fontWeight: '900' }]}>
+                        {sosCountdown}
+                      </Text>
+                    ) : (
+                      <>
+                        <Text style={{ fontSize: 32 }}>🚨</Text>
+                        <Text style={s.panicTxt}>PANIC</Text>
+                        <Text style={s.panicTxt}>SOS</Text>
+                      </>
+                    )}
+                  </View>
+                </TouchableOpacity>
+              </View>
+            </Animated.View>
+          </View>
+
+          {/* Voice note status */}
+          <View style={[s.voiceStatus, { backgroundColor: voiceUri ? '#0a1f0a' : '#1a1a1a' }]}>
+            <Text style={[s.voiceStatusTxt, { color: voiceUri ? GREEN : '#555' }]}>
+              {voiceUri
+                ? '🎙 Voice note ready — will broadcast on SOS'
+                : '🎙 No voice note — add one in Profile'}
+            </Text>
+          </View>
         </View>
 
         {/* Quick tiles */}
@@ -149,68 +317,46 @@ export default function DriverDashboard({ nav, location }) {
           <View style={s.tilesRow}>
             <TouchableOpacity style={s.tile} onPress={() => {
               if (location) {
-                Alert.alert('Location Shared',
-                  `📍 ${location.latitude.toFixed(6)}° N\n${location.longitude.toFixed(6)}° E\n\nLocation sent to Central Command!`
+                Alert.alert('Share Location',
+                  `Your location:\n${location.latitude.toFixed(5)}° N\n${location.longitude.toFixed(5)}° E`,
+                  [
+                    { text: '🗺 Open Maps', onPress: () => Linking.openURL(`https://maps.google.com?q=${location.latitude},${location.longitude}`) },
+                    { text: 'Cancel', style: 'cancel' },
+                  ]
                 );
-              } else {
-                Alert.alert('Location', 'Getting your location...');
               }
             }}>
               <Text style={s.tileIco}>📍</Text>
               <Text style={s.tileTxt}>SHARE{'\n'}LOCATION</Text>
-              <Text style={s.tileFr}>PARTAGER{'\n'}POSITION</Text>
             </TouchableOpacity>
             <View style={s.tileDivV} />
             <TouchableOpacity style={s.tile} onPress={() => {
-              Alert.alert(
-                'Emergency Contacts',
-                '📞 Police: 117\n📞 Fire: 118\n📞 Ambulance: 15\n📞 TSN Command: +237 6XX XXX XXX',
-                [{ text: 'OK' }]
+              Alert.alert('Emergency Services', 'Select:',
+                [
+                  { text: '👮 Police: 117',   onPress: () => Linking.openURL('tel:117') },
+                  { text: '🚒 Fire: 118',     onPress: () => Linking.openURL('tel:118') },
+                  { text: '🚑 Ambulance: 15', onPress: () => Linking.openURL('tel:15')  },
+                  { text: 'Cancel', style: 'cancel' },
+                ]
               );
             }}>
-              <Text style={s.tileIco}>👤</Text>
+              <Text style={s.tileIco}>📞</Text>
               <Text style={s.tileTxt}>EMERGENCY{'\n'}CONTACTS</Text>
-              <Text style={s.tileFr}>CONTACTS{'\n'}D'URGENCE</Text>
             </TouchableOpacity>
           </View>
           <View style={s.tileDivH} />
           <View style={s.tilesRow}>
-            <TouchableOpacity style={s.tile} onPress={() => nav('statistics')}>
-              <View style={s.orgBadge}><Text style={s.orgTxt}>📊</Text></View>
-              <Text style={s.tileTxt}>VIEW{'\n'}STATISTICS</Text>
-              <Text style={s.tileFr}>STATISTIQUES</Text>
+            <TouchableOpacity style={s.tile} onPress={() => nav('liveMap')}>
+              <Text style={s.tileIco}>🗺</Text>
+              <Text style={s.tileTxt}>LIVE{'\n'}MAP</Text>
             </TouchableOpacity>
             <View style={s.tileDivV} />
-            <TouchableOpacity style={s.tile} onPress={() => nav('emergency')}>
-              <Text style={s.tileIco}>🚦</Text>
-              <Text style={s.tileTxt}>REPORT{'\n'}INCIDENT</Text>
-              <Text style={[s.tileFr, { color: RED }]}>SIGNALER INCIDENT</Text>
+            <TouchableOpacity style={s.tile} onPress={() => nav('chatBoard')}>
+              <Text style={s.tileIco}>💬</Text>
+              <Text style={s.tileTxt}>COMMUNITY{'\n'}CHAT</Text>
             </TouchableOpacity>
           </View>
         </View>
-
-        {/* Sync bar */}
-        <View style={s.syncBar}>
-          <View style={s.syncDot} />
-          <Text style={s.syncTxt}>
-            LAST SYNC  {new Date().toLocaleTimeString()}  •  {user?.city || 'Yaoundé'}
-          </Text>
-          <Text style={{ fontSize: 18 }}>🗺</Text>
-        </View>
-
-        {/* Live GPS */}
-        {location && (
-          <View style={s.gpsCard}>
-            <Text style={s.gpsTitle}>📍 LIVE GPS — REAL TIME</Text>
-            <Text style={s.gpsCoords}>
-              {location.latitude.toFixed(6)}° N,{'  '}
-              {location.longitude.toFixed(6)}° E
-            </Text>
-            <Text style={s.gpsAccuracy}>
-              Accuracy: ±{Math.round(location.accuracy || 10)}m  •  SIGNAL: OPTIMAL
-            </Text>
-          </View>
-        )}
 
         <View style={{ height: 20 }} />
       </ScrollView>
@@ -222,9 +368,9 @@ export default function DriverDashboard({ nav, location }) {
           <Text style={s.navTxtA}>DASHBOARD</Text>
         </View>
         {[
-          { ico: '⚠',  lbl: 'ALERTS',     to: 'emergency'   },
-          { ico: '📊', lbl: 'STATS',       to: 'statistics'  },
-          { ico: '👤', lbl: 'PROFILE',     to: 'profileSetup'},
+          { ico: '⚠',  lbl: 'ALERTS',  to: 'emergency'    },
+          { ico: '💬', lbl: 'CHAT',     to: 'chatBoard'    },
+          { ico: '👤', lbl: 'PROFILE',  to: 'profileSetup' },
         ].map(({ ico, lbl, to }) => (
           <TouchableOpacity key={lbl} style={s.navItem} onPress={() => nav(to)}>
             <Text style={s.navIco}>{ico}</Text>
@@ -237,61 +383,59 @@ export default function DriverDashboard({ nav, location }) {
 }
 
 const s = StyleSheet.create({
-  safe:        { flex: 1, backgroundColor: '#f5f5f5' },
-  topBar:      { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 16, paddingTop: 10, paddingBottom: 12 },
-  topLeft:     { flexDirection: 'row', alignItems: 'center' },
-  shieldWrap:  { width: 38, height: 38, borderRadius: 10, backgroundColor: RED, alignItems: 'center', justifyContent: 'center', marginRight: 10 },
-  shieldIco:   { fontSize: 20, color: '#fff' },
-  appName:     { fontSize: 13, fontWeight: '900', color: '#111', lineHeight: 16 },
-  appFr:       { fontSize: 9, color: '#888', lineHeight: 12, marginTop: 2 },
-  topRight:    { alignItems: 'center' },
-  mtnBadge:    { flexDirection: 'row', backgroundColor: GOLD, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6, alignItems: 'center' },
-  mtnTxt:      { fontSize: 13, fontWeight: '900', color: '#111', lineHeight: 15 },
-  mtnArrow:    { fontSize: 10, color: '#333', marginLeft: 4 },
-  connTxt:     { fontSize: 9, color: '#555', marginTop: 3, fontWeight: '600' },
-  idRow:       { flexDirection: 'row', paddingHorizontal: 16, marginBottom: 6, gap: 12 },
-  idCard:      { flex: 1, backgroundColor: '#fff', borderRadius: 16, padding: 14, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.06, shadowRadius: 6, elevation: 2 },
-  idLabel:     { fontSize: 10, fontWeight: '700', color: '#555', lineHeight: 14 },
-  idNum:       { fontSize: 22, fontWeight: '900', color: '#111', marginTop: 6 },
-  distTxt:     { fontSize: 13, fontWeight: '600', color: BLUE },
-  dutyCard:    { width: 100, backgroundColor: '#e8f0fe', borderRadius: 16, padding: 14, alignItems: 'center', justifyContent: 'center' },
-  dutyShield:  { width: 32, height: 32, borderRadius: 8, backgroundColor: BLUE, alignItems: 'center', justifyContent: 'center', marginBottom: 6 },
-  dutyTxt:     { fontSize: 13, fontWeight: '900', color: BLUE, textAlign: 'center', lineHeight: 16 },
-  dutyFr:      { fontSize: 10, color: '#5c7aaa', textAlign: 'center', lineHeight: 14, marginTop: 2 },
-  statsRow:    { flexDirection: 'row', paddingHorizontal: 16, gap: 8, marginBottom: 8 },
-  statMini:    { flex: 1, borderRadius: 12, padding: 12, alignItems: 'center' },
-  statMiniNum: { fontSize: 22, fontWeight: '900', color: '#fff' },
-  statMiniLbl: { fontSize: 9, color: 'rgba(255,255,255,0.8)', textAlign: 'center', marginTop: 4, fontWeight: '600' },
-  panicOuter:  { alignItems: 'center', marginVertical: 8 },
-  diamondGold: { width: 220, height: 220, backgroundColor: GOLD, transform: [{ rotate: '45deg' }], borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
-  diamondInner:{ width: 180, height: 180, backgroundColor: 'rgba(255,255,255,0.15)', borderRadius: 5, alignItems: 'center', justifyContent: 'center' },
-  panicBtn:    { width: 160, height: 160, backgroundColor: RED, borderRadius: 5, alignItems: 'center', justifyContent: 'center', shadowColor: RED, shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.5, shadowRadius: 20, elevation: 12 },
-  panicIco:    { fontSize: 36, transform: [{ rotate: '-45deg' }], marginBottom: 4 },
-  panicTxt:    { color: '#fff', fontSize: 22, fontWeight: '900', lineHeight: 26, transform: [{ rotate: '-45deg' }] },
-  panicHint:   { textAlign: 'center', fontSize: 11, fontWeight: '700', color: '#333', marginTop: 14, lineHeight: 16 },
-  panicHintFr: { textAlign: 'center', fontSize: 10, color: '#888', marginTop: 2 },
-  tilesCard:   { marginHorizontal: 16, backgroundColor: '#fff', borderRadius: 16, overflow: 'hidden', marginBottom: 8 },
-  tilesRow:    { flexDirection: 'row' },
-  tile:        { flex: 1, padding: 14, alignItems: 'flex-start' },
-  tileIco:     { fontSize: 20, marginBottom: 4 },
-  tileTxt:     { fontSize: 12, fontWeight: '800', color: '#111', lineHeight: 16 },
-  tileFr:      { fontSize: 10, color: '#888', marginTop: 2, lineHeight: 13 },
-  tileDivV:    { width: 1, backgroundColor: '#eee', marginVertical: 10 },
-  tileDivH:    { height: 1, backgroundColor: '#eee' },
-  orgBadge:    { backgroundColor: '#ffe0b2', borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3, marginBottom: 4 },
-  orgTxt:      { fontSize: 11, fontWeight: '900', color: '#bf360c' },
-  syncBar:     { flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff', marginHorizontal: 16, borderRadius: 12, padding: 12, marginBottom: 8 },
-  syncDot:     { width: 8, height: 8, borderRadius: 4, backgroundColor: GOLD, marginRight: 8 },
-  syncTxt:     { flex: 1, fontSize: 11, color: '#555' },
-  gpsCard:     { marginHorizontal: 16, backgroundColor: '#e8f5e9', borderRadius: 12, padding: 14, marginBottom: 8 },
-  gpsTitle:    { fontSize: 12, fontWeight: '800', color: '#2e7d32', marginBottom: 6 },
-  gpsCoords:   { fontSize: 14, fontFamily: 'monospace', color: '#111', fontWeight: '700' },
-  gpsAccuracy: { fontSize: 11, color: '#555', marginTop: 4 },
-  bottomNav:   { flexDirection: 'row', backgroundColor: '#fff', borderTopWidth: 0.5, borderTopColor: '#e0e0e0', paddingVertical: 8 },
-  navActive:   { flex: 1, alignItems: 'center', backgroundColor: RED, borderRadius: 12, paddingVertical: 6, marginHorizontal: 4 },
-  navItem:     { flex: 1, alignItems: 'center', paddingVertical: 6 },
-  navIcoA:     { fontSize: 18, color: '#fff' },
-  navTxtA:     { fontSize: 9, color: '#fff', marginTop: 2, fontWeight: '700' },
-  navIco:      { fontSize: 18, color: '#aaa' },
-  navTxt:      { fontSize: 9, color: '#aaa', marginTop: 2 },
+  safe:          { flex: 1, backgroundColor: '#f5f5f5' },
+  topBar:        { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12, backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#eee' },
+  topLeft:       { flexDirection: 'row', alignItems: 'center' },
+  shieldWrap:    { width: 38, height: 38, borderRadius: 10, backgroundColor: RED, alignItems: 'center', justifyContent: 'center', marginRight: 10 },
+  shieldIco:     { fontSize: 20, color: '#fff' },
+  appName:       { fontSize: 12, fontWeight: '900', color: '#111' },
+  appFr:         { fontSize: 10, color: '#888', marginTop: 1 },
+  topRight:      { alignItems: 'flex-end' },
+  mtnBadge:      { backgroundColor: GOLD, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 4 },
+  mtnTxt:        { fontSize: 12, fontWeight: '900', color: '#111' },
+  connTxt:       { fontSize: 9, color: GREEN, marginTop: 2, fontWeight: '700' },
+  statsRow:      { flexDirection: 'row', padding: 14, gap: 8 },
+  statMini:      { flex: 1, borderRadius: 12, padding: 12, alignItems: 'center' },
+  statNum:       { fontSize: 22, fontWeight: '900', color: '#fff' },
+  statLbl:       { fontSize: 8.5, color: 'rgba(255,255,255,0.85)', textAlign: 'center', marginTop: 3, fontWeight: '600' },
+  alertsSection: { marginHorizontal: 14, marginBottom: 12, backgroundColor: '#fff', borderRadius: 16, padding: 14, borderWidth: 1.5, borderColor: RED },
+  alertsHeader:  { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
+  alertsTitle:   { fontSize: 13, fontWeight: '900', color: RED },
+  refreshTxt:    { fontSize: 20, color: RED, fontWeight: '700' },
+  alertMini:     { flexDirection: 'row', alignItems: 'center', backgroundColor: '#f9f9f9', borderRadius: 10, padding: 10, marginBottom: 6, borderLeftWidth: 3 },
+  alertDot:      { width: 8, height: 8, borderRadius: 4, marginRight: 10 },
+  alertType:     { fontSize: 12, fontWeight: '800', color: '#111', marginBottom: 2 },
+  alertLocation: { fontSize: 11, color: '#555', marginBottom: 2 },
+  alertTime:     { fontSize: 10, color: '#888' },
+  moreAlerts:    { fontSize: 11, color: '#888', textAlign: 'center', marginTop: 4, fontStyle: 'italic' },
+  locationCard:  { marginHorizontal: 14, marginBottom: 12, backgroundColor: '#1a2e1a', borderRadius: 14, padding: 14 },
+  locationTop:   { flexDirection: 'row', alignItems: 'center', marginBottom: 6 },
+  livePing:      { width: 8, height: 8, borderRadius: 4, backgroundColor: GREEN, marginRight: 8 },
+  locationTitle: { fontSize: 12, fontWeight: '800', color: GREEN, flex: 1 },
+  openMapsBtn:   { backgroundColor: BLUE, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 5 },
+  openMapsTxt:   { fontSize: 10, fontWeight: '700', color: '#fff' },
+  coordsTxt:     { fontSize: 13, fontWeight: '900', color: '#fff', fontFamily: 'monospace' },
+  panicSection:  { alignItems: 'center', marginVertical: 12, paddingHorizontal: 16 },
+  instructBox:   { width: '100%', backgroundColor: '#111', borderRadius: 12, padding: 14, marginBottom: 16, alignItems: 'center' },
+  instructTitle: { fontSize: 18, fontWeight: '900', color: '#fff', marginBottom: 6 },
+  instructSub:   { fontSize: 11, color: '#888', textAlign: 'center', lineHeight: 17 },
+  panicOuter:    { marginBottom: 14 },
+  panicBtn:      { width: 155, height: 155, borderRadius: 8, alignItems: 'center', justifyContent: 'center', elevation: 12 },
+  panicTxt:      { color: '#fff', fontSize: 18, fontWeight: '900', lineHeight: 22 },
+  voiceStatus:   { width: '100%', borderRadius: 10, padding: 10, alignItems: 'center' },
+  voiceStatusTxt:{ fontSize: 12, fontWeight: '600' },
+  tilesCard:     { marginHorizontal: 14, backgroundColor: '#fff', borderRadius: 16, overflow: 'hidden', marginBottom: 12, elevation: 2 },
+  tilesRow:      { flexDirection: 'row' },
+  tile:          { flex: 1, padding: 16, alignItems: 'center' },
+  tileIco:       { fontSize: 24, marginBottom: 6 },
+  tileTxt:       { fontSize: 11, fontWeight: '800', color: '#111', textAlign: 'center', lineHeight: 16 },
+  tileDivV:      { width: 1, backgroundColor: '#eee', marginVertical: 10 },
+  tileDivH:      { height: 1, backgroundColor: '#eee' },
+  bottomNav:     { flexDirection: 'row', backgroundColor: '#fff', borderTopWidth: 1, borderTopColor: '#eee', paddingVertical: 8 },
+  navActive:     { flex: 1, alignItems: 'center', backgroundColor: RED, borderRadius: 12, paddingVertical: 6, marginHorizontal: 4 },
+  navItem:       { flex: 1, alignItems: 'center', paddingVertical: 6 },
+  navIcoA:       { fontSize: 18, color: '#fff' },
+  navTxtA:       { fontSize: 9, color: '#fff', marginTop: 2, fontWeight: '700' },
+  navIco:        { fontSize: 18, color: '#aaa' },
+  navTxt:        { fontSize: 9, color: '#aaa', marginTop: 2 },
 });
