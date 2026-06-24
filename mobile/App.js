@@ -28,6 +28,7 @@ function Navigator() {
     } else if (user && role === 'police') {
       setScreen('policeDashboard');
     } else {
+      // User logged out or no session — go to login
       setScreen('login');
     }
   }, [user, role, loading]);

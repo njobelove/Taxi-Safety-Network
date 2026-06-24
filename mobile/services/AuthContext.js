@@ -69,16 +69,18 @@ export function AuthProvider({ children }) {
   };
 
   const logout = () => {
+    console.log('Logging out...');
     try {
       localStorage.removeItem('tsn_token');
       localStorage.removeItem('tsn_user');
       localStorage.removeItem('tsn_role');
-      // Keep photo and voice — they belong to the device
+      // Note: photo and voice stay saved on device for next login
     } catch (e) {}
+    // Clear all auth state — triggers useEffect in Navigator → goes to login
     setUser(null);
     setToken(null);
     setRole(null);
-    // Don't clear photo/voice on logout — they stay for next login
+    console.log('Logged out successfully');
   };
 
   return (
