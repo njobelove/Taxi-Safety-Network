@@ -3,7 +3,9 @@
  * All calls go through local backend on port 8000
  */
 
-const BASE_URL = 'http://localhost:8000';
+const BASE_URL = typeof window !== 'undefined' && window.location.hostname !== 'localhost'
+  ? 'https://tsn-backend-53yj.onrender.com'
+  : 'http://localhost:8000';
 
 async function apiRequest(endpoint, method = 'GET', body = null, token = null) {
   const headers = { 'Content-Type': 'application/json' };
