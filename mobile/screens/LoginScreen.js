@@ -1,78 +1,70 @@
 import React, { useState } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity,
-  TextInput, ScrollView, SafeAreaView, StatusBar,
-  ActivityIndicator,
+  TextInput, SafeAreaView, Alert,
+  ActivityIndicator, KeyboardAvoidingView,
+  Platform, ScrollView,
 } from 'react-native';
 import { loginDriver, loginPoliceStation } from '../services/api';
 import { useAuth } from '../services/AuthContext';
 
 const RED  = '#d32f2f';
+const BLUE = '#1565C0';
 const GOLD = '#f5c518';
-const BLUE = '#1976D2';
 
 export default function LoginScreen({ nav }) {
   const { login } = useAuth();
-
   const [role,       setRole]       = useState('driver');
-  const [network,    setNetwork]    = useState('MTN');
-  const [identifier, setId]         = useState('');
+  const [identifier, setIdentifier] = useState('');
   const [password,   setPassword]   = useState('');
-  const [showPass,   setShowPass]   = useState(false);
   const [loading,    setLoading]    = useState(false);
-  const [error,      setError]      = useState('');
+  const [showPass,   setShowPass]   = useState(false);
 
-  // Clear fields when switching role
-  const switchRole = (newRole) => {
-    setRole(newRole);
-    setId('');
-    setPassword('');
-    setError('');
-  };
+  const isDriver = role === 'driver';
+  const accent   = isDriver ? RED : BLUE;
 
   const handleLogin = async () => {
-    setError('');
-    if (!identifier.trim() || !password.trim()) {
-      setError('Please fill in all fields.');
+    const id = identifier.trim();
+    const pw = password.trim();
+
+    if (!id || !pw) {
+      Alert.alert('Missing Fields', isDriver
+        ? 'Please enter your Badge ID and password.'
+        : 'Please enter your Station ID and password.'
+      );
       return;
     }
+
     setLoading(true);
     try {
-      if (role === 'driver') {
-        // ── DRIVER LOGIN ──────────────────────────────────────
-        const result = await loginDriver(identifier.trim(), password);
-        console.log('Driver login result:', JSON.stringify(result).substring(0, 100));
+      if (isDriver) {
+        // Driver logs in with BADGE ID (e.g. TX-YDE-001)
+        const result = await loginDriver(id, pw);
         if (result && (result.token || result.user)) {
           login(result, 'driver');
-          console.log('Navigating to driverDashboard...');
-          nav('driverDashboard');
         } else {
-          setError('Login failed. Invalid response from server.');
+          Alert.alert('Login Failed', 'Invalid Badge ID or password.');
         }
-
       } else {
-        // ── POLICE STATION LOGIN ──────────────────────────────
-        const result = await loginPoliceStation(identifier.trim(), password);
-        console.log('Police login result:', JSON.stringify(result).substring(0, 100));
+        // Police logs in with STATION ID (e.g. YDE-PS-001)
+        const result = await loginPoliceStation(id, pw);
         if (result && (result.token || result.user)) {
           login(result, 'police');
-          console.log('Navigating to policeDashboard...');
-          nav('policeDashboard');
         } else {
-          setError('Login failed. Invalid response from server.');
+          Alert.alert('Login Failed', 'Invalid Station ID or password.');
         }
       }
-
     } catch (e) {
-      if (e.message === 'INVALID_CREDENTIALS') {
-        setError(
-          role === 'driver'
-            ? 'Invalid Badge ID or password. Please check and try again.'
-            : 'Invalid Station ID or password. Please check and try again.'
+      const msg = e.message || '';
+      if (msg.includes('INVALID_CREDENTIALS') || msg.includes('401')) {
+        Alert.alert(
+          'Login Failed',
+          isDriver
+            ? 'Wrong Badge ID or password.\n\nYour Badge ID looks like: TX-YDE-001'
+            : 'Wrong Station ID or password.\n\nYour Station ID looks like: YDE-PS-001'
         );
       } else {
-        setError('Connection error. Make sure backend is running and try again.');
-        console.log('Login error:', e.message);
+        Alert.alert('Connection Error', 'Could not connect to server. Check your internet connection.');
       }
     } finally {
       setLoading(false);
@@ -81,226 +73,162 @@ export default function LoginScreen({ nav }) {
 
   return (
     <SafeAreaView style={s.safe}>
-      <StatusBar barStyle="dark-content" backgroundColor="#efefef" />
-      <ScrollView contentContainerStyle={s.scroll} showsVerticalScrollIndicator={false}>
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      >
+        <ScrollView contentContainerStyle={{ flexGrow: 1 }} keyboardShouldPersistTaps="handled">
+          <View style={s.container}>
 
-        {/* Shield logo */}
-        <View style={s.shieldWrap}>
-          <View style={s.shield}><Text style={s.shieldTxt}>🛡</Text></View>
-        </View>
-        <Text style={s.appName}>Taxi Safety Network</Text>
-        <Text style={s.appSub}>RÉSEAU DE SÉCURITÉ DES TAXIS</Text>
-
-        <View style={s.card}>
-
-          {/* ── ROLE SELECTOR ── */}
-          <Text style={s.roleLabel}>SELECT YOUR ROLE / CHOISIR VOTRE RÔLE</Text>
-          <View style={s.tabs}>
-            {[
-              { id: 'driver', label: 'DRIVER',  sub: 'Conducteur', ico: '🚖' },
-              { id: 'police', label: 'POLICE',  sub: 'Officier',   ico: '🏛'  },
-            ].map((r) => (
-              <TouchableOpacity
-                key={r.id}
-                style={[s.tab, role === r.id && s.tabActive]}
-                onPress={() => switchRole(r.id)}
-              >
-                <Text style={s.tabIco}>{r.ico}</Text>
-                <Text style={[s.tabTxt, role === r.id && s.tabTxtA]}>{r.label}</Text>
-                <Text style={[s.tabSub, role === r.id && s.tabSubA]}>{r.sub}</Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-
-          {/* Role confirmation banner */}
-          <View style={[s.roleBanner, { backgroundColor: role === 'driver' ? '#fff3e0' : '#e8f0fe' }]}>
-            <Text style={[s.roleBannerTxt, { color: role === 'driver' ? '#e65100' : BLUE }]}>
-              {role === 'driver'
-                ? '🚖 Logging in as TAXI DRIVER — use your Badge ID'
-                : '🏛 Logging in as POLICE STATION — use your Station ID'}
-            </Text>
-          </View>
-
-          <Text style={s.authTitle}>
-            {role === 'driver' ? 'Driver Authentication' : 'Station Authentication'}
-          </Text>
-          <Text style={s.authFr}>
-            {role === 'driver'
-              ? 'Veuillez vous identifier pour continuer'
-              : 'Authentification de la station de police'}
-          </Text>
-
-          {/* ── BADGE ID / STATION ID ── */}
-          <Text style={s.lbl}>
-            {role === 'driver' ? 'BADGE ID (NOT vehicle plate)' : 'STATION ID'}
-            {'  '}
-            <Text style={s.lblFr}>
-              {role === 'driver' ? 'e.g. TX-YDE-001' : 'e.g. YDE-PS-001'}
-            </Text>
-          </Text>
-          <View style={[s.inputRow, error && !password ? s.inputError : null]}>
-            <Text style={s.inputIco}>{role === 'driver' ? '🪪' : '🏛'}</Text>
-            <TextInput
-              style={s.input}
-              placeholder={role === 'driver'
-                ? 'Your Badge ID — e.g. TX-YDE-001'
-                : 'Your Station ID — e.g. YDE-PS-001'}
-              placeholderTextColor="#bbb"
-              value={identifier}
-              onChangeText={(t) => { setId(t); setError(''); }}
-              autoCapitalize="characters"
-            />
-          </View>
-
-          {/* Warning: badge ID not plate */}
-          {role === 'driver' && (
-            <View style={s.warnBox}>
-              <Text style={s.warnTxt}>
-                ⚠ Enter your BADGE ID (e.g. TX-YDE-001){'\n'}NOT your vehicle plate number
-              </Text>
-            </View>
-          )}
-
-          {/* ── NETWORK SELECTOR — driver only ── */}
-          {role === 'driver' && (
-            <>
-              <Text style={s.lbl}>
-                ACTIVE NETWORK{'  '}
-                <Text style={s.lblFr}>RÉSEAU ACTIF</Text>
-              </Text>
-              <View style={s.netRow}>
-                {[
-                  { id: 'MTN',    dot: GOLD      },
-                  { id: 'ORANGE', dot: RED       },
-                  { id: 'CAMTEL', dot: '#42a5f5' },
-                ].map(({ id, dot }) => (
-                  <TouchableOpacity
-                    key={id}
-                    style={[s.netBtn, network === id && s.netBtnActive]}
-                    onPress={() => setNetwork(id)}
-                  >
-                    <Text style={[s.netTxt, network === id && s.netTxtActive]}>{id}</Text>
-                    <View style={[s.netDot, { backgroundColor: dot }]} />
-                  </TouchableOpacity>
-                ))}
+            {/* Logo */}
+            <View style={s.logoSection}>
+              <View style={[s.logoCircle, { backgroundColor: accent }]}>
+                <Text style={s.logoIco}>🛡</Text>
               </View>
-            </>
-          )}
-
-          {/* ── PASSWORD ── */}
-          <Text style={s.lbl}>
-            PASSWORD{'  '}
-            <Text style={s.lblFr}>MOT DE PASSE</Text>
-          </Text>
-          <View style={[s.inputRow, error && s.inputError]}>
-            <Text style={s.inputIco}>🔒</Text>
-            <TextInput
-              style={s.input}
-              placeholder="••••••••"
-              placeholderTextColor="#bbb"
-              secureTextEntry={!showPass}
-              value={password}
-              onChangeText={(t) => { setPassword(t); setError(''); }}
-            />
-            <TouchableOpacity onPress={() => setShowPass(!showPass)}>
-              <Text style={{ fontSize: 18 }}>👁</Text>
-            </TouchableOpacity>
-          </View>
-
-          {/* ── ERROR ── */}
-          {error ? (
-            <View style={s.errorBox}>
-              <Text style={s.errorIco}>⚠</Text>
-              <Text style={s.errorTxt}>{error}</Text>
+              <Text style={s.appName}>TAXI SAFETY NETWORK</Text>
+              <Text style={s.appSub}>RÉSEAU DE SÉCURITÉ DES TAXIS</Text>
+              <Text style={s.appCity}>Cameroon · TSN 2025</Text>
             </View>
-          ) : null}
 
-          {/* ── LOGIN BUTTON ── */}
-          <TouchableOpacity
-            style={[s.initBtn, loading && s.initBtnDisabled,
-              role === 'police' && { backgroundColor: BLUE }]}
-            onPress={handleLogin}
-            disabled={loading}
-            activeOpacity={0.85}
-          >
-            {loading
-              ? <ActivityIndicator color="#fff" size="small" />
-              : <Text style={s.initTxt}>
-                  {role === 'driver'
-                    ? '🚖 LOGIN AS DRIVER  →'
-                    : '🏛 LOGIN AS POLICE STATION  →'}
+            {/* Role selector */}
+            <View style={s.roleRow}>
+              <TouchableOpacity
+                style={[s.roleBtn, role === 'driver' && { backgroundColor: RED }]}
+                onPress={() => { setRole('driver'); setIdentifier(''); }}
+              >
+                <Text style={[s.roleTxt, role === 'driver' && { color: '#fff' }]}>
+                  🚖 TAXI DRIVER
                 </Text>
-            }
-          </TouchableOpacity>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[s.roleBtn, role === 'police' && { backgroundColor: BLUE }]}
+                onPress={() => { setRole('police'); setIdentifier(''); }}
+              >
+                <Text style={[s.roleTxt, role === 'police' && { color: '#fff' }]}>
+                  🏛 POLICE STATION
+                </Text>
+              </TouchableOpacity>
+            </View>
 
-          <View style={s.linksRow}>
-            <TouchableOpacity><Text style={s.linkBlue}>HELP DESK</Text></TouchableOpacity>
-            <TouchableOpacity><Text style={s.linkDark}>RESET CREDENTIALS</Text></TouchableOpacity>
-          </View>
+            {/* Login form */}
+            <View style={s.card}>
+              <Text style={[s.cardTitle, { color: accent }]}>
+                {isDriver ? '🚖 DRIVER LOGIN' : '🏛 POLICE LOGIN'}
+              </Text>
 
-          <View style={s.createRow}>
-            <Text style={s.createGrey}>New to the network?{'  '}</Text>
-            <TouchableOpacity onPress={() => nav('signup')}>
-              <Text style={s.createRed}>CREATE ACCOUNT</Text>
+              {/* ID field */}
+              <View style={s.fieldWrap}>
+                <Text style={s.fieldLabel}>
+                  {isDriver ? '🪪 BADGE ID / DRIVER ID' : '🪪 STATION ID'}
+                </Text>
+                <Text style={s.fieldHint}>
+                  {isDriver
+                    ? 'The ID you used when registering (e.g. TX-YDE-001)'
+                    : 'Your station ID (e.g. YDE-PS-001)'}
+                </Text>
+                <TextInput
+                  style={[s.input, { borderColor: accent }]}
+                  placeholder={isDriver ? 'e.g. TX-YDE-001' : 'e.g. YDE-PS-001'}
+                  placeholderTextColor="#aaa"
+                  value={identifier}
+                  onChangeText={t => setIdentifier(t.toUpperCase())}
+                  autoCapitalize="characters"
+                  autoCorrect={false}
+                />
+              </View>
+
+              {/* Password field */}
+              <View style={s.fieldWrap}>
+                <Text style={s.fieldLabel}>🔒 PASSWORD</Text>
+                <View style={s.passRow}>
+                  <TextInput
+                    style={[s.input, { flex: 1, borderColor: accent }]}
+                    placeholder="Enter your password"
+                    placeholderTextColor="#aaa"
+                    value={password}
+                    onChangeText={setPassword}
+                    secureTextEntry={!showPass}
+                    autoCorrect={false}
+                  />
+                  <TouchableOpacity
+                    style={s.showBtn}
+                    onPress={() => setShowPass(!showPass)}
+                  >
+                    <Text style={s.showBtnTxt}>{showPass ? '🙈' : '👁'}</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+
+              {/* Login button */}
+              <TouchableOpacity
+                style={[s.loginBtn, { backgroundColor: accent }, loading && { opacity: 0.7 }]}
+                onPress={handleLogin}
+                disabled={loading}
+              >
+                {loading
+                  ? <ActivityIndicator color="#fff" />
+                  : <Text style={s.loginBtnTxt}>
+                      {isDriver ? '🚖 LOGIN AS DRIVER' : '🏛 LOGIN AS POLICE'}
+                    </Text>
+                }
+              </TouchableOpacity>
+
+              {/* Help box */}
+              <View style={[s.helpBox, { borderColor: accent + '44' }]}>
+                <Text style={s.helpTitle}>
+                  {isDriver ? '🪪 What is my Badge ID?' : '🪪 What is my Station ID?'}
+                </Text>
+                <Text style={s.helpTxt}>
+                  {isDriver
+                    ? 'Your Badge ID is the unique ID you entered when you registered.\n\nExample format: TX-YDE-001\n\nIt was NOT your vehicle plate — it was the ID you chose during sign up.'
+                    : 'Your Station ID is the unique ID entered during registration.\n\nExample format: YDE-PS-001\n\nContact TSN Command if you forgot your Station ID.'}
+                </Text>
+              </View>
+            </View>
+
+            {/* Register link */}
+            <TouchableOpacity
+              style={[s.registerBtn, { borderColor: accent }]}
+              onPress={() => nav('signup')}
+            >
+              <Text style={[s.registerBtnTxt, { color: accent }]}>
+                Don't have an account? REGISTER HERE →
+              </Text>
             </TouchableOpacity>
-          </View>
 
-          <Text style={s.version}>SYSTEM VERSION 4.2.0-ALPHA</Text>
-          <Text style={s.cert}>🛡  DGSN CERTIFIED  ·  🔒  END-TO-END ENCRYPTION</Text>
-        </View>
-      </ScrollView>
+          </View>
+        </ScrollView>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
 
 const s = StyleSheet.create({
-  safe:          { flex: 1, backgroundColor: '#efefef' },
-  scroll:        { alignItems: 'center', paddingTop: 36, paddingBottom: 50 },
-  shieldWrap:    { marginBottom: 14 },
-  shield:        { width: 68, height: 68, borderRadius: 18, backgroundColor: RED, alignItems: 'center', justifyContent: 'center' },
-  shieldTxt:     { fontSize: 34 },
-  appName:       { fontSize: 28, fontWeight: '800', color: '#111' },
-  appSub:        { fontSize: 11, color: '#888', letterSpacing: 1, marginBottom: 28, marginTop: 2 },
-  card:          { width: '92%', backgroundColor: '#fff', borderRadius: 22, padding: 24, shadowColor: '#000', shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.09, shadowRadius: 16, elevation: 5 },
-  roleLabel:     { fontSize: 10, fontWeight: '800', color: '#888', letterSpacing: 0.8, marginBottom: 10 },
-  tabs:          { flexDirection: 'row', backgroundColor: '#f2f2f2', borderRadius: 14, padding: 4, marginBottom: 12 },
-  tab:           { flex: 1, alignItems: 'center', paddingVertical: 10, borderRadius: 11 },
-  tabActive:     { backgroundColor: RED },
-  tabIco:        { fontSize: 18, marginBottom: 2 },
-  tabTxt:        { fontSize: 13, fontWeight: '800', color: '#666', letterSpacing: 0.8 },
-  tabTxtA:       { color: '#fff' },
-  tabSub:        { fontSize: 10, color: '#aaa', marginTop: 2 },
-  tabSubA:       { color: '#ffc9c9' },
-  roleBanner:    { borderRadius: 10, padding: 10, marginBottom: 14 },
-  roleBannerTxt: { fontSize: 12, fontWeight: '700', textAlign: 'center' },
-  authTitle:     { fontSize: 20, fontWeight: '700', color: '#111', textAlign: 'center' },
-  authFr:        { fontSize: 12, color: '#999', textAlign: 'center', marginBottom: 20, marginTop: 4 },
-  lbl:           { fontSize: 11, fontWeight: '800', color: '#333', letterSpacing: 0.8, marginTop: 18 },
-  lblFr:         { fontSize: 10, fontWeight: '400', color: '#aaa' },
-  inputRow:      { flexDirection: 'row', alignItems: 'center', backgroundColor: '#f6f6f6', borderRadius: 13, paddingHorizontal: 14, height: 52, marginTop: 7, borderWidth: 1.5, borderColor: 'transparent' },
-  inputError:    { borderColor: RED },
-  inputIco:      { fontSize: 17, marginRight: 10 },
-  input:         { flex: 1, fontSize: 15, color: '#222' },
-  warnBox:       { backgroundColor: '#fff3cd', borderRadius: 8, padding: 8, marginTop: 6, borderLeftWidth: 3, borderLeftColor: GOLD },
-  warnTxt:       { fontSize: 11, color: '#856404', fontWeight: '600', lineHeight: 16 },
-  netRow:        { flexDirection: 'row', justifyContent: 'space-between', marginTop: 8 },
-  netBtn:        { flex: 0.31, alignItems: 'center', paddingVertical: 11, borderRadius: 13, backgroundColor: '#f6f6f6', borderWidth: 2, borderColor: 'transparent' },
-  netBtnActive:  { backgroundColor: '#fffbea', borderColor: GOLD },
-  netTxt:        { fontSize: 13, fontWeight: '700', color: '#666' },
-  netTxtActive:  { color: '#222' },
-  netDot:        { width: 8, height: 8, borderRadius: 4, marginTop: 5 },
-  errorBox:      { flexDirection: 'row', alignItems: 'center', backgroundColor: '#fde8e8', borderRadius: 10, padding: 12, marginTop: 14 },
-  errorIco:      { fontSize: 16, color: RED, marginRight: 8 },
-  errorTxt:      { flex: 1, fontSize: 12, color: RED, fontWeight: '600', lineHeight: 18 },
-  initBtn:       { backgroundColor: RED, borderRadius: 16, height: 54, alignItems: 'center', justifyContent: 'center', marginTop: 24 },
-  initBtnDisabled:{ backgroundColor: '#e88' },
-  initTxt:       { color: '#fff', fontSize: 14, fontWeight: '800', letterSpacing: 0.5 },
-  linksRow:      { flexDirection: 'row', justifyContent: 'space-between', marginTop: 20 },
-  linkBlue:      { fontSize: 12, fontWeight: '700', color: BLUE },
-  linkDark:      { fontSize: 12, fontWeight: '600', color: '#444' },
-  createRow:     { flexDirection: 'row', justifyContent: 'center', marginTop: 16 },
-  createGrey:    { fontSize: 13, color: '#777' },
-  createRed:     { fontSize: 13, fontWeight: '800', color: RED },
-  version:       { fontSize: 10, color: '#ccc', textAlign: 'center', marginTop: 18, letterSpacing: 1 },
-  cert:          { fontSize: 11, color: '#666', fontWeight: '600', textAlign: 'center', marginTop: 10 },
+  safe:          { flex: 1, backgroundColor: '#f5f5f5' },
+  container:     { flex: 1, padding: 20 },
+  logoSection:   { alignItems: 'center', paddingVertical: 30 },
+  logoCircle:    { width: 90, height: 90, borderRadius: 45, alignItems: 'center', justifyContent: 'center', marginBottom: 16, elevation: 8 },
+  logoIco:       { fontSize: 48, color: '#fff' },
+  appName:       { fontSize: 20, fontWeight: '900', color: '#111', letterSpacing: 1 },
+  appSub:        { fontSize: 11, color: '#888', marginTop: 4 },
+  appCity:       { fontSize: 11, color: '#aaa', marginTop: 2 },
+  roleRow:       { flexDirection: 'row', gap: 10, marginBottom: 16 },
+  roleBtn:       { flex: 1, backgroundColor: '#e0e0e0', borderRadius: 12, paddingVertical: 12, alignItems: 'center' },
+  roleTxt:       { fontSize: 13, fontWeight: '800', color: '#555' },
+  card:          { backgroundColor: '#fff', borderRadius: 18, padding: 20, elevation: 3, marginBottom: 16 },
+  cardTitle:     { fontSize: 14, fontWeight: '900', letterSpacing: 0.5, marginBottom: 20 },
+  fieldWrap:     { marginBottom: 16 },
+  fieldLabel:    { fontSize: 12, fontWeight: '800', color: '#333', marginBottom: 4 },
+  fieldHint:     { fontSize: 10, color: '#888', marginBottom: 6, lineHeight: 14 },
+  input:         { borderWidth: 1.5, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12, fontSize: 15, color: '#111', backgroundColor: '#fafafa', fontWeight: '600' },
+  passRow:       { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  showBtn:       { width: 44, height: 44, borderRadius: 12, backgroundColor: '#f0f0f0', alignItems: 'center', justifyContent: 'center' },
+  showBtnTxt:    { fontSize: 20 },
+  loginBtn:      { borderRadius: 14, paddingVertical: 16, alignItems: 'center', marginTop: 8, marginBottom: 16 },
+  loginBtnTxt:   { fontSize: 16, fontWeight: '900', color: '#fff' },
+  helpBox:       { borderWidth: 1, borderRadius: 12, padding: 14, backgroundColor: '#fafafa' },
+  helpTitle:     { fontSize: 13, fontWeight: '800', color: '#333', marginBottom: 8 },
+  helpTxt:       { fontSize: 12, color: '#666', lineHeight: 18 },
+  registerBtn:   { borderWidth: 2, borderRadius: 14, paddingVertical: 14, alignItems: 'center', backgroundColor: '#fff' },
+  registerBtnTxt:{ fontSize: 13, fontWeight: '800' },
 });
