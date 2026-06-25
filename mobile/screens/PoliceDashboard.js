@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { voiceAlertService } from '../services/voiceAlertService';
 import {
   View, Text, StyleSheet, TouchableOpacity,
   ScrollView, SafeAreaView, ActivityIndicator,

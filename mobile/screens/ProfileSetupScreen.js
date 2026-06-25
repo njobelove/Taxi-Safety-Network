@@ -24,25 +24,51 @@ export default function ProfileSetupScreen({ nav }) {
   const [soundObj,     setSoundObj]     = useState(null);
   const [profileSaved, setProfileSaved] = useState(false);
   const [saving,       setSaving]       = useState(false);
+  const [recSecs,      setRecSecs]      = useState(0);
   const recordingRef = useRef(null);
+  const timerRef     = useRef(null);
 
   const isDriver = role === 'driver';
 
   useEffect(() => {
-    return () => { soundObj?.unloadAsync(); };
+    return () => {
+      soundObj?.unloadAsync();
+      clearInterval(timerRef.current);
+    };
   }, [soundObj]);
 
-  // ── PHOTO UPLOAD ─────────────────────────────────────────────────────────────
+  // ── Convert blob URI to base64 for permanent storage ─────────────────────
+  const blobToBase64 = async (uri) => {
+    try {
+      if (Platform.OS === 'web') {
+        const response = await fetch(uri);
+        const blob     = await response.blob();
+        return new Promise((resolve, reject) => {
+          const reader  = new FileReader();
+          reader.onload = () => resolve(reader.result);
+          reader.onerror = reject;
+          reader.readAsDataURL(blob);
+        });
+      }
+      return uri; // On mobile, URI is already permanent
+    } catch (e) {
+      console.log('blobToBase64 error:', e.message);
+      return uri;
+    }
+  };
+
+  // ── PHOTO UPLOAD ─────────────────────────────────────────────────────────
   const handlePickPhoto = () => {
     if (Platform.OS === 'web') {
       const input = document.createElement('input');
-      input.type = 'file';
+      input.type  = 'file';
       input.accept = 'image/*';
       input.onchange = (e) => {
         const file = e.target.files[0];
         if (file) {
           const reader = new FileReader();
           reader.onload = (ev) => {
+            // Save as base64 — permanent, survives reload
             savePhoto(ev.target.result);
             setProfileSaved(false);
             Alert.alert('✅ Photo Uploaded', 'Tap SAVE PROFILE to keep it permanently.');
@@ -53,8 +79,6 @@ export default function ProfileSetupScreen({ nav }) {
       input.click();
       return;
     }
-
-    // Mobile
     (async () => {
       try {
         const IP = require('expo-image-picker');
@@ -65,28 +89,20 @@ export default function ProfileSetupScreen({ nav }) {
         }
         const result = await IP.launchImageLibraryAsync({
           mediaTypes: IP.MediaTypeOptions.Images,
-          allowsEditing: true,
-          aspect: [1, 1],
-          quality: 0.8,
+          allowsEditing: true, aspect: [1, 1], quality: 0.5,
         });
         if (!result.canceled && result.assets[0]) {
-          savePhoto(result.assets[0].uri);
+          const b64 = await blobToBase64(result.assets[0].uri);
+          savePhoto(b64);
           setProfileSaved(false);
         }
-      } catch (e) {
-        Alert.alert('Error', e.message);
-      }
+      } catch (e) { Alert.alert('Error', e.message); }
     })();
   };
 
   const showPhotoOptions = () => {
-    if (Platform.OS === 'web') {
-      handlePickPhoto();
-      return;
-    }
-    Alert.alert(
-      'Update Profile Photo',
-      'Choose photo source',
+    if (Platform.OS === 'web') { handlePickPhoto(); return; }
+    Alert.alert('Update Profile Photo', 'Choose source',
       [
         { text: '📷 Take Photo',          onPress: handleTakePhoto },
         { text: '🖼 Choose from Gallery', onPress: handlePickPhoto },
@@ -104,20 +120,17 @@ export default function ProfileSetupScreen({ nav }) {
         return;
       }
       const result = await IP.launchCameraAsync({
-        allowsEditing: true,
-        aspect: [1, 1],
-        quality: 0.8,
+        allowsEditing: true, aspect: [1, 1], quality: 0.5,
       });
       if (!result.canceled && result.assets[0]) {
-        savePhoto(result.assets[0].uri);
+        const b64 = await blobToBase64(result.assets[0].uri);
+        savePhoto(b64);
         setProfileSaved(false);
       }
-    } catch (e) {
-      Alert.alert('Error', e.message);
-    }
+    } catch (e) { Alert.alert('Error', e.message); }
   };
 
-  // ── VOICE RECORDING ──────────────────────────────────────────────────────────
+  // ── VOICE RECORDING ───────────────────────────────────────────────────────
   const startRecording = async () => {
     try {
       const { status } = await Audio.requestPermissionsAsync();
@@ -134,25 +147,28 @@ export default function ProfileSetupScreen({ nav }) {
       );
       recordingRef.current = recording;
       setIsRecording(true);
-    } catch (e) {
-      Alert.alert('Recording Error', e.message);
-    }
+      setRecSecs(0);
+      timerRef.current = setInterval(() => setRecSecs(s => s + 1), 1000);
+    } catch (e) { Alert.alert('Recording Error', e.message); }
   };
 
   const stopRecording = async () => {
     try {
+      clearInterval(timerRef.current);
       setIsRecording(false);
       await recordingRef.current.stopAndUnloadAsync();
       const uri = recordingRef.current.getURI();
-      saveVoice(uri);
+
+      // ── KEY FIX: Convert to base64 so it survives page reload ──
+      Alert.alert('⏳ Saving...', 'Converting voice note for permanent storage...');
+      const base64Uri = await blobToBase64(uri);
+      saveVoice(base64Uri);
       setProfileSaved(false);
       Alert.alert(
-        '✅ Voice Recorded',
-        'Your voice note is ready.\n\nTap SAVE PROFILE to keep it permanently.\n\nThis voice will play automatically when you press SOS.'
+        '✅ Voice Note Saved',
+        'Your voice note has been saved permanently!\n\nThis voice will play to police and drivers when you trigger an SOS alert.\n\nTap SAVE PROFILE to confirm.'
       );
-    } catch (e) {
-      Alert.alert('Error', 'Could not save recording: ' + e.message);
-    }
+    } catch (e) { Alert.alert('Error', 'Could not save recording: ' + e.message); }
   };
 
   const playVoiceNote = async () => {
@@ -182,7 +198,7 @@ export default function ProfileSetupScreen({ nav }) {
     }
   };
 
-  // ── SAVE PROFILE ─────────────────────────────────────────────────────────────
+  // ── SAVE PROFILE ──────────────────────────────────────────────────────────
   const handleSaveProfile = async () => {
     if (!profilePhoto && !voiceUri) {
       Alert.alert('Nothing to Save', 'Please upload a photo or record a voice note first.');
@@ -194,45 +210,28 @@ export default function ProfileSetupScreen({ nav }) {
     setProfileSaved(true);
     Alert.alert(
       '✅ Profile Saved!',
-      `Your profile is now saved permanently:\n\n${profilePhoto ? '📷 Profile photo — visible on every screen\n' : ''}${voiceUri ? '🎙 Voice note — plays when you press SOS\n' : ''}\nYou will NOT need to re-upload these again.`,
+      (profilePhoto ? '📷 Profile photo saved\n' : '') +
+      (voiceUri     ? '🎙 Voice note saved permanently\n' : '') +
+      '\nYou will NOT need to re-upload these again.',
       [{ text: 'Great!', onPress: () => nav(isDriver ? 'driverDashboard' : 'policeDashboard') }]
     );
   };
 
-  // ── EMERGENCY CALL ───────────────────────────────────────────────────────────
   const callEmergency = (number, label) => {
-    Alert.alert(
-      `📞 Call ${label}`,
-      `Dial ${number} now?`,
+    Alert.alert('📞 Call ' + label, 'Dial ' + number + '?',
       [
         { text: 'Cancel', style: 'cancel' },
-        { text: '📞 CALL NOW', onPress: () => Linking.openURL(`tel:${number}`) }
+        { text: '📞 CALL NOW', onPress: () => Linking.openURL('tel:' + number) }
       ]
     );
   };
 
-  // ── LOGOUT ───────────────────────────────────────────────────────────────────
   const handleLogout = () => {
-    Alert.alert(
-      'Logout / Déconnexion',
-      'Are you sure you want to logout?\n\nYou can log back in with any account.',
+    Alert.alert('Logout', 'Are you sure?',
       [
         { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'YES — LOGOUT',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              // Stop any playing audio
-              await soundObj?.stopAsync();
-              await soundObj?.unloadAsync();
-            } catch (e) {}
-            // Clear auth state
-            logout();
-            // Force navigate to login
-            setTimeout(() => nav('login'), 100);
-          }
-        }
+        { text: 'LOGOUT', style: 'destructive',
+          onPress: () => { logout(); nav('login'); } }
       ]
     );
   };
@@ -245,28 +244,24 @@ export default function ProfileSetupScreen({ nav }) {
         </TouchableOpacity>
         <Text style={s.headerTitle}>MY PROFILE</Text>
         <TouchableOpacity onPress={() => nav('chatBoard')}>
-          <Text style={s.chatIco}>💬</Text>
+          <Text style={{ fontSize: 22 }}>💬</Text>
         </TouchableOpacity>
       </View>
 
       <ScrollView showsVerticalScrollIndicator={false}>
 
-        {/* ── PHOTO ── */}
+        {/* Photo */}
         <View style={s.avatarSection}>
           <TouchableOpacity onPress={showPhotoOptions} style={s.avatarWrap}>
-            {profilePhoto ? (
-              <Image source={{ uri: profilePhoto }} style={s.avatarImg} />
-            ) : (
-              <View style={s.avatarCircle}>
-                <Text style={s.avatarIco}>{isDriver ? '🚖' : '🏛'}</Text>
-              </View>
-            )}
+            {profilePhoto
+              ? <Image source={{ uri: profilePhoto }} style={s.avatarImg} />
+              : <View style={s.avatarCircle}>
+                  <Text style={{ fontSize: 52 }}>{isDriver ? '🚖' : '🏛'}</Text>
+                </View>
+            }
             <View style={s.cameraBadge}><Text>📷</Text></View>
           </TouchableOpacity>
-
-          <Text style={s.avatarName}>
-            {user?.fullName || user?.stationName || '—'}
-          </Text>
+          <Text style={s.avatarName}>{user?.fullName || user?.stationName || '—'}</Text>
           <View style={[s.roleBadge, { backgroundColor: isDriver ? RED : BLUE }]}>
             <Text style={s.roleTxt}>{isDriver ? '🚖 TAXI DRIVER' : '🏛 POLICE STATION'}</Text>
           </View>
@@ -275,7 +270,7 @@ export default function ProfileSetupScreen({ nav }) {
           </Text>
         </View>
 
-        {/* ── SAVE PROFILE BUTTON ── */}
+        {/* Save button */}
         {(profilePhoto || voiceUri) && (
           <TouchableOpacity
             style={[s.saveBtn, profileSaved && { backgroundColor: GREEN }]}
@@ -285,28 +280,38 @@ export default function ProfileSetupScreen({ nav }) {
             {saving
               ? <ActivityIndicator color="#fff" />
               : <Text style={s.saveBtnTxt}>
-                  {profileSaved
-                    ? '✅ PROFILE SAVED TO ACCOUNT'
-                    : '💾 SAVE PROFILE TO MY ACCOUNT'}
+                  {profileSaved ? '✅ PROFILE SAVED' : '💾 SAVE PROFILE TO MY ACCOUNT'}
                 </Text>
             }
           </TouchableOpacity>
         )}
 
-        {/* ── VOICE NOTE ── */}
+        {/* Voice note */}
         <View style={s.card}>
           <Text style={s.cardTitle}>🎙 VOICE IDENTITY NOTE</Text>
           <Text style={s.cardSub}>
-            Record anything in your own words — your name, a phrase, a sound.
-            This voice plays automatically when you press the SOS button,
-            alerting nearby police and drivers.
+            Record anything in your own words. This voice plays automatically
+            to police and drivers when you trigger an SOS alert.{'\n\n'}
+            ⚠ Voice notes are saved permanently as audio data — they work
+            even after you close and reopen the app.
           </Text>
 
-          {voiceUri && (
+          {voiceUri && !voiceUri.startsWith('blob:') && (
             <View style={s.voiceSavedBanner}>
-              <Text style={s.voiceSavedTxt}>✅ Voice note recorded and active</Text>
-              <Text style={s.voiceSavedSub}>
-                Plays automatically on SOS · {profileSaved ? 'Saved to account' : 'Tap SAVE PROFILE above'}
+              <Text style={s.voiceSavedTxt}>✅ Voice note saved permanently</Text>
+              <Text style={{ fontSize: 10, color: '#555', marginTop: 3 }}>
+                Will broadcast to police & drivers on SOS
+              </Text>
+            </View>
+          )}
+
+          {voiceUri && voiceUri.startsWith('blob:') && (
+            <View style={[s.voiceSavedBanner, { backgroundColor: '#fff3e0' }]}>
+              <Text style={[s.voiceSavedTxt, { color: '#e65100' }]}>
+                ⚠ Voice note needs re-recording
+              </Text>
+              <Text style={{ fontSize: 10, color: '#555', marginTop: 3 }}>
+                Temporary recording expired — please record again below
               </Text>
             </View>
           )}
@@ -318,7 +323,7 @@ export default function ProfileSetupScreen({ nav }) {
                 onPress={stopRecording}
               >
                 <Text style={s.voiceBtnIco}>⏹</Text>
-                <Text style={s.voiceBtnTxt}>STOP & SAVE</Text>
+                <Text style={s.voiceBtnTxt}>STOP & SAVE ({recSecs}s)</Text>
               </TouchableOpacity>
             ) : (
               <TouchableOpacity
@@ -326,11 +331,13 @@ export default function ProfileSetupScreen({ nav }) {
                 onPress={startRecording}
               >
                 <Text style={s.voiceBtnIco}>🎙</Text>
-                <Text style={s.voiceBtnTxt}>{voiceUri ? 'RE-RECORD' : 'RECORD VOICE'}</Text>
+                <Text style={s.voiceBtnTxt}>
+                  {voiceUri && !voiceUri.startsWith('blob:') ? 'RE-RECORD' : 'RECORD VOICE'}
+                </Text>
               </TouchableOpacity>
             )}
 
-            {voiceUri && (
+            {voiceUri && !voiceUri.startsWith('blob:') && (
               <TouchableOpacity
                 style={[s.voiceBtn, { backgroundColor: playing ? GOLD : GREEN }]}
                 onPress={playVoiceNote}
@@ -345,16 +352,16 @@ export default function ProfileSetupScreen({ nav }) {
             <View style={s.recordingBanner}>
               <View style={s.recordingDot} />
               <Text style={s.recordingTxt}>
-                🔴 Recording... Say anything in your own words. Tap STOP when done.
+                🔴 Recording... {recSecs}s — Say anything in your own words. Tap STOP when done.
               </Text>
             </View>
           )}
         </View>
 
-        {/* ── EMERGENCY CONTACTS ── */}
+        {/* Emergency contacts */}
         <View style={s.card}>
           <Text style={s.cardTitle}>🚨 EMERGENCY CONTACTS</Text>
-          <Text style={s.cardSub}>Connected to your SOS button — tap to call directly</Text>
+          <Text style={s.cardSub}>Connected to your SOS button</Text>
           {[
             { label: 'Police Emergency',   number: '117',           ico: '👮', color: BLUE  },
             { label: 'Fire Brigade',       number: '118',           ico: '🚒', color: RED   },
@@ -367,20 +374,20 @@ export default function ProfileSetupScreen({ nav }) {
               onPress={() => callEmergency(number, label)}
             >
               <View style={[s.emergencyIcoBg, { backgroundColor: color }]}>
-                <Text style={s.emergencyIco}>{ico}</Text>
+                <Text style={{ fontSize: 20 }}>{ico}</Text>
               </View>
-              <View style={s.emergencyInfo}>
+              <View style={{ flex: 1 }}>
                 <Text style={s.emergencyLabel}>{label}</Text>
                 <Text style={s.emergencyNumber}>{number}</Text>
               </View>
-              <View style={[s.callBtn, { backgroundColor: color }]}>
+              <View style={[s.callBtn2, { backgroundColor: color }]}>
                 <Text style={s.callBtnTxt}>📞 CALL</Text>
               </View>
             </TouchableOpacity>
           ))}
         </View>
 
-        {/* ── ACCOUNT INFO ── */}
+        {/* Account info */}
         <View style={s.card}>
           <Text style={s.cardTitle}>ACCOUNT INFORMATION</Text>
           {isDriver ? (
@@ -394,17 +401,17 @@ export default function ProfileSetupScreen({ nav }) {
             </>
           ) : (
             <>
-              <InfoRow label="Station Name"  value={user?.stationName}   ico="🏛" />
-              <InfoRow label="Station ID"    value={user?.stationId}     ico="🪪" />
-              <InfoRow label="District"      value={user?.district}      ico="📍" />
-              <InfoRow label="City"          value={user?.city}          ico="🌆" />
+              <InfoRow label="Station Name"   value={user?.stationName}   ico="🏛" />
+              <InfoRow label="Station ID"     value={user?.stationId}     ico="🪪" />
+              <InfoRow label="District"       value={user?.district}      ico="📍" />
+              <InfoRow label="City"           value={user?.city}          ico="🌆" />
               <InfoRow label="Emergency Line" value={user?.emergencyLine} ico="📞" />
-              <InfoRow label="Commander"     value={user?.commanderName} ico="👮" />
+              <InfoRow label="Commander"      value={user?.commanderName} ico="👮" />
             </>
           )}
         </View>
 
-        {/* Quick Actions */}
+        {/* Quick actions */}
         <View style={s.card}>
           <Text style={s.cardTitle}>QUICK ACTIONS</Text>
           {[
@@ -412,7 +419,10 @@ export default function ProfileSetupScreen({ nav }) {
             { ico: '🗺',  lbl: 'Live Driver Map', to: 'liveMap'    },
             { ico: '💬', lbl: 'Community Chat',  to: 'chatBoard'   },
             { ico: '📊', lbl: 'Statistics',      to: 'statistics'  },
-            ...(isDriver ? [{ ico: '🚨', lbl: 'Report Emergency', to: 'emergency' }] : []),
+            ...(isDriver ? [
+              { ico: '🚨', lbl: 'Report Emergency',   to: 'emergency'    },
+              { ico: '🔕', lbl: 'Deactivate My Alert', to: 'disactivation' },
+            ] : []),
           ].map(({ ico, lbl, to }) => (
             <TouchableOpacity key={lbl} style={s.actionBtn} onPress={() => nav(to)}>
               <Text style={s.actionIco}>{ico}</Text>
@@ -422,14 +432,7 @@ export default function ProfileSetupScreen({ nav }) {
           ))}
         </View>
 
-        {/* Direct logout - no Alert needed */}
-        <TouchableOpacity
-          style={s.logoutBtn}
-          onPress={() => {
-            logout();
-            nav('login');
-          }}
-        >
+        <TouchableOpacity style={s.logoutBtn} onPress={handleLogout}>
           <Text style={s.logoutTxt}>🚪  LOGOUT / DÉCONNEXION</Text>
         </TouchableOpacity>
 
@@ -438,7 +441,7 @@ export default function ProfileSetupScreen({ nav }) {
 
       <View style={s.bottomNav}>
         {[
-          { ico: '⊞',  lbl: 'DASHBOARD', to: isDriver ? 'driverDashboard' : 'policeDashboard' },
+          { ico: '⊞', lbl: 'DASHBOARD', to: isDriver ? 'driverDashboard' : 'policeDashboard' },
           { ico: isDriver ? '⚠' : '📋', lbl: isDriver ? 'ALERTS' : 'INCIDENTS', to: isDriver ? 'emergency' : 'policeDashboard' },
           { ico: '💬', lbl: 'CHAT',      to: 'chatBoard'    },
           { ico: '👤', lbl: 'PROFILE',   to: 'profileSetup' },
@@ -474,12 +477,10 @@ const s = StyleSheet.create({
   header:           { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 14, backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#eee' },
   back:             { fontSize: 22, color: RED, fontWeight: '600' },
   headerTitle:      { fontSize: 15, fontWeight: '900', color: '#111' },
-  chatIco:          { fontSize: 22 },
   avatarSection:    { alignItems: 'center', paddingVertical: 28, backgroundColor: '#fff', marginBottom: 8 },
   avatarWrap:       { position: 'relative', marginBottom: 12 },
   avatarCircle:     { width: 110, height: 110, borderRadius: 55, backgroundColor: '#f0f0f0', alignItems: 'center', justifyContent: 'center', borderWidth: 3, borderColor: RED },
   avatarImg:        { width: 110, height: 110, borderRadius: 55, borderWidth: 3, borderColor: RED },
-  avatarIco:        { fontSize: 52 },
   cameraBadge:      { position: 'absolute', bottom: 0, right: 0, width: 32, height: 32, borderRadius: 16, backgroundColor: RED, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: '#fff' },
   avatarName:       { fontSize: 22, fontWeight: '900', color: '#111', marginBottom: 8 },
   roleBadge:        { borderRadius: 20, paddingHorizontal: 16, paddingVertical: 6, marginBottom: 6 },
@@ -492,7 +493,6 @@ const s = StyleSheet.create({
   cardSub:          { fontSize: 11, color: '#888', lineHeight: 17, marginBottom: 14 },
   voiceSavedBanner: { backgroundColor: '#e8f5e9', borderRadius: 10, padding: 10, marginBottom: 12 },
   voiceSavedTxt:    { fontSize: 12, color: GREEN, fontWeight: '700' },
-  voiceSavedSub:    { fontSize: 10, color: '#555', marginTop: 3 },
   voiceBtnsRow:     { flexDirection: 'row', gap: 8, marginBottom: 10 },
   voiceBtn:         { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', borderRadius: 12, paddingVertical: 13, paddingHorizontal: 14, gap: 6 },
   voiceBtnIco:      { fontSize: 18, color: '#fff' },
@@ -502,11 +502,9 @@ const s = StyleSheet.create({
   recordingTxt:     { flex: 1, fontSize: 11, color: RED, fontWeight: '600', lineHeight: 16 },
   emergencyRow:     { flexDirection: 'row', alignItems: 'center', paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#f5f5f5' },
   emergencyIcoBg:   { width: 42, height: 42, borderRadius: 12, alignItems: 'center', justifyContent: 'center', marginRight: 12 },
-  emergencyIco:     { fontSize: 20 },
-  emergencyInfo:    { flex: 1 },
   emergencyLabel:   { fontSize: 12, fontWeight: '700', color: '#111' },
   emergencyNumber:  { fontSize: 15, fontWeight: '900', color: '#555', marginTop: 2 },
-  callBtn:          { borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8 },
+  callBtn2:         { borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8 },
   callBtnTxt:       { fontSize: 11, fontWeight: '800', color: '#fff' },
   infoRow:          { flexDirection: 'row', alignItems: 'center', paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: '#f5f5f5' },
   infoIco:          { fontSize: 20, marginRight: 14, width: 28 },
