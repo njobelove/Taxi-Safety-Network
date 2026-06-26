@@ -385,6 +385,8 @@ export default function ProfileSetupScreen({ nav }) {
             { ico: '🗺',  lbl: 'Live Driver Map',     to: 'liveMap'      },
             { ico: '💬', lbl: 'Community Chat',       to: 'chatBoard'    },
             { ico: '📊', lbl: 'Statistics',           to: 'statistics'   },
+            { ico: '📋', lbl: 'Alert History',        to: 'history'      },
+            { ico: '⚙',  lbl: 'Settings',             to: 'settings'     },
             ...(isDriver ? [
               { ico: '🚨', lbl: 'Report Emergency',   to: 'emergency'     },
               { ico: '🔕', lbl: 'Deactivate My Alert',to: 'disactivation' },
