@@ -211,6 +211,14 @@ app.post('/api/auth/stations/login', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// ── ALERT HISTORY (all alerts including resolved) ─────────────────────────────
+app.get("/api/alerts/history", async (req, res) => {
+  try {
+    const alerts = await Alert.find().sort({ createdAt: -1 }).limit(200);
+    res.json({ alerts });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // ── ALERTS ────────────────────────────────────────────────────────────────────
 app.get('/api/alerts', async (req, res) => {
   try {
