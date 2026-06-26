@@ -15,28 +15,25 @@ import ProfileSetupScreen  from './screens/ProfileSetupScreen';
 import StatisticsScreen    from './screens/StatisticsScreen';
 import ChatBoardScreen     from './screens/ChatBoardScreen';
 import LiveMapScreen       from './screens/LiveMapScreen';
+import HistoryScreen       from './screens/HistoryScreen';
+import SettingsScreen      from './screens/SettingsScreen';
 
 function Navigator() {
   const { user, role, loading } = useAuth();
   const [screen,   setScreen]   = useState('login');
   const [location, setLocation] = useState(null);
 
-  // ── This runs every time user or role changes ──────────────────────────────
-  // When logout() is called → user becomes null → this sets screen to 'login'
   useEffect(() => {
     if (loading) return;
-
     if (user && role === 'driver') {
       setScreen('driverDashboard');
     } else if (user && role === 'police') {
       setScreen('policeDashboard');
     } else {
-      // No user = logged out → go to login
       setScreen('login');
     }
   }, [user, role, loading]);
 
-  // ── GPS ───────────────────────────────────────────────────────────────────
   useEffect(() => {
     let subscription;
     (async () => {
@@ -44,7 +41,7 @@ function Navigator() {
         const { status } = await Location.requestForegroundPermissionsAsync();
         if (status !== 'granted') return;
         const pos = await Location.getCurrentPositionAsync({
-          accuracy: Location.Accuracy.Balanced
+          accuracy: Location.Accuracy.Balanced,
         });
         setLocation(pos.coords);
         subscription = await Location.watchPositionAsync(
@@ -60,7 +57,7 @@ function Navigator() {
 
   if (loading) {
     return (
-      <View style={{ flex:1, alignItems:'center', justifyContent:'center', backgroundColor:'#f5f5f5' }}>
+      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#f5f5f5' }}>
         <ActivityIndicator size="large" color="#d32f2f" />
       </View>
     );
@@ -81,6 +78,8 @@ function Navigator() {
     case 'statistics':      return <StatisticsScreen      {...p} />;
     case 'chatBoard':       return <ChatBoardScreen       {...p} />;
     case 'liveMap':         return <LiveMapScreen         {...p} />;
+    case 'history':         return <HistoryScreen         {...p} />;
+    case 'settings':        return <SettingsScreen        {...p} />;
     default:                return <LoginScreen           {...p} />;
   }
 }
