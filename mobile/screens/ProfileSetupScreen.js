@@ -13,11 +13,7 @@ const GREEN = '#2e7d32';
 const GOLD  = '#f5c518';
 
 export default function ProfileSetupScreen({ nav }) {
-  const {
-    user, role, logout,
-    profilePhoto, voiceUri,
-    savePhoto, saveVoice,
-  } = useAuth();
+  const { user, role, logout, profilePhoto, voiceUri, savePhoto, saveVoice } = useAuth();
 
   const [isRecording,  setIsRecording]  = useState(false);
   const [playing,      setPlaying]      = useState(false);
@@ -25,56 +21,50 @@ export default function ProfileSetupScreen({ nav }) {
   const [profileSaved, setProfileSaved] = useState(false);
   const [saving,       setSaving]       = useState(false);
   const [recSecs,      setRecSecs]      = useState(0);
+  const [converting,   setConverting]   = useState(false);
   const recordingRef = useRef(null);
   const timerRef     = useRef(null);
-
-  const isDriver = role === 'driver';
+  const isDriver     = role === 'driver';
 
   useEffect(() => {
-    return () => {
-      soundObj?.unloadAsync();
-      clearInterval(timerRef.current);
-    };
+    return () => { soundObj?.unloadAsync(); clearInterval(timerRef.current); };
   }, [soundObj]);
 
-  // ── Convert blob URI to base64 for permanent storage ─────────────────────
-  const blobToBase64 = async (uri) => {
+  // ── Convert blob to base64 so it survives navigation ─────────────────────
+  const toBase64 = async (uri) => {
+    if (!uri) return null;
+    if (!uri.startsWith('blob:')) return uri; // already permanent
     try {
-      if (Platform.OS === 'web') {
-        const response = await fetch(uri);
-        const blob     = await response.blob();
-        return new Promise((resolve, reject) => {
-          const reader  = new FileReader();
-          reader.onload = () => resolve(reader.result);
-          reader.onerror = reject;
-          reader.readAsDataURL(blob);
-        });
-      }
-      return uri; // On mobile, URI is already permanent
+      const response = await fetch(uri);
+      const blob     = await response.blob();
+      return await new Promise((resolve, reject) => {
+        const reader   = new FileReader();
+        reader.onload  = () => resolve(reader.result);
+        reader.onerror = () => reject(new Error('FileReader failed'));
+        reader.readAsDataURL(blob);
+      });
     } catch (e) {
-      console.log('blobToBase64 error:', e.message);
+      console.log('toBase64 error:', e.message);
       return uri;
     }
   };
 
-  // ── PHOTO UPLOAD ─────────────────────────────────────────────────────────
-  const handlePickPhoto = () => {
+  // ── PHOTO ─────────────────────────────────────────────────────────────────
+  const pickPhoto = () => {
     if (Platform.OS === 'web') {
-      const input = document.createElement('input');
-      input.type  = 'file';
+      const input  = document.createElement('input');
+      input.type   = 'file';
       input.accept = 'image/*';
       input.onchange = (e) => {
         const file = e.target.files[0];
-        if (file) {
-          const reader = new FileReader();
-          reader.onload = (ev) => {
-            // Save as base64 — permanent, survives reload
-            savePhoto(ev.target.result);
-            setProfileSaved(false);
-            Alert.alert('✅ Photo Uploaded', 'Tap SAVE PROFILE to keep it permanently.');
-          };
-          reader.readAsDataURL(file);
-        }
+        if (!file) return;
+        const reader  = new FileReader();
+        reader.onload = (ev) => {
+          savePhoto(ev.target.result); // base64 — permanent
+          setProfileSaved(false);
+          Alert.alert('✅ Photo uploaded', 'Tap SAVE PROFILE to keep it.');
+        };
+        reader.readAsDataURL(file);
       };
       input.click();
       return;
@@ -83,16 +73,10 @@ export default function ProfileSetupScreen({ nav }) {
       try {
         const IP = require('expo-image-picker');
         const { status } = await IP.requestMediaLibraryPermissionsAsync();
-        if (status !== 'granted') {
-          Alert.alert('Permission Required', 'Please allow photo library access.');
-          return;
-        }
-        const result = await IP.launchImageLibraryAsync({
-          mediaTypes: IP.MediaTypeOptions.Images,
-          allowsEditing: true, aspect: [1, 1], quality: 0.5,
-        });
-        if (!result.canceled && result.assets[0]) {
-          const b64 = await blobToBase64(result.assets[0].uri);
+        if (status !== 'granted') { Alert.alert('Permission Required', 'Allow photo library access.'); return; }
+        const r = await IP.launchImageLibraryAsync({ allowsEditing: true, aspect: [1,1], quality: 0.5 });
+        if (!r.canceled && r.assets[0]) {
+          const b64 = await toBase64(r.assets[0].uri);
           savePhoto(b64);
           setProfileSaved(false);
         }
@@ -100,51 +84,36 @@ export default function ProfileSetupScreen({ nav }) {
     })();
   };
 
-  const showPhotoOptions = () => {
-    if (Platform.OS === 'web') { handlePickPhoto(); return; }
-    Alert.alert('Update Profile Photo', 'Choose source',
-      [
-        { text: '📷 Take Photo',          onPress: handleTakePhoto },
-        { text: '🖼 Choose from Gallery', onPress: handlePickPhoto },
-        { text: 'Cancel', style: 'cancel' },
-      ]
-    );
-  };
-
-  const handleTakePhoto = async () => {
+  const takePhoto = async () => {
     try {
       const IP = require('expo-image-picker');
       const { status } = await IP.requestCameraPermissionsAsync();
-      if (status !== 'granted') {
-        Alert.alert('Permission Required', 'Please allow camera access.');
-        return;
-      }
-      const result = await IP.launchCameraAsync({
-        allowsEditing: true, aspect: [1, 1], quality: 0.5,
-      });
-      if (!result.canceled && result.assets[0]) {
-        const b64 = await blobToBase64(result.assets[0].uri);
+      if (status !== 'granted') { Alert.alert('Permission Required', 'Allow camera access.'); return; }
+      const r = await IP.launchCameraAsync({ allowsEditing: true, aspect: [1,1], quality: 0.5 });
+      if (!r.canceled && r.assets[0]) {
+        const b64 = await toBase64(r.assets[0].uri);
         savePhoto(b64);
         setProfileSaved(false);
       }
     } catch (e) { Alert.alert('Error', e.message); }
   };
 
-  // ── VOICE RECORDING ───────────────────────────────────────────────────────
+  const showPhotoOptions = () => {
+    if (Platform.OS === 'web') { pickPhoto(); return; }
+    Alert.alert('Update Photo', 'Choose source', [
+      { text: '📷 Camera',  onPress: takePhoto },
+      { text: '🖼 Gallery', onPress: pickPhoto },
+      { text: 'Cancel', style: 'cancel' },
+    ]);
+  };
+
+  // ── VOICE ─────────────────────────────────────────────────────────────────
   const startRecording = async () => {
     try {
       const { status } = await Audio.requestPermissionsAsync();
-      if (status !== 'granted') {
-        Alert.alert('Permission Required', 'Please allow microphone access.');
-        return;
-      }
-      await Audio.setAudioModeAsync({
-        allowsRecordingIOS: true,
-        playsInSilentModeIOS: true,
-      });
-      const { recording } = await Audio.Recording.createAsync(
-        Audio.RecordingOptionsPresets.HIGH_QUALITY
-      );
+      if (status !== 'granted') { Alert.alert('Permission Required', 'Allow microphone access.'); return; }
+      await Audio.setAudioModeAsync({ allowsRecordingIOS: true, playsInSilentModeIOS: true });
+      const { recording } = await Audio.Recording.createAsync(Audio.RecordingOptionsPresets.HIGH_QUALITY);
       recordingRef.current = recording;
       setIsRecording(true);
       setRecSecs(0);
@@ -157,55 +126,63 @@ export default function ProfileSetupScreen({ nav }) {
       clearInterval(timerRef.current);
       setIsRecording(false);
       await recordingRef.current.stopAndUnloadAsync();
-      const uri = recordingRef.current.getURI();
+      const blobUri = recordingRef.current.getURI();
 
-      // ── KEY FIX: Convert to base64 so it survives page reload ──
-      Alert.alert('⏳ Saving...', 'Converting voice note for permanent storage...');
-      const base64Uri = await blobToBase64(uri);
-      saveVoice(base64Uri);
+      // Convert to base64 IMMEDIATELY so it never disappears
+      setConverting(true);
+      const base64 = await toBase64(blobUri);
+      setConverting(false);
+
+      // Save to AuthContext AND localStorage directly
+      saveVoice(base64);
+
+      // Also save directly to localStorage as backup
+      try {
+        const userId = user?.badgeId || user?.stationId || 'unknown';
+        localStorage.setItem('tsn_voice_' + userId, base64);
+        localStorage.setItem('tsn_voice', base64); // fallback key
+      } catch (e) {}
+
       setProfileSaved(false);
       Alert.alert(
-        '✅ Voice Note Saved',
-        'Your voice note has been saved permanently!\n\nThis voice will play to police and drivers when you trigger an SOS alert.\n\nTap SAVE PROFILE to confirm.'
+        '✅ Voice Note Saved!',
+        'Your voice note is saved permanently.\n\nIt will:\n• Play on YOUR dashboard when alerts are active\n• Broadcast to police when you press SOS\n• Stay saved even after you close the app'
       );
-    } catch (e) { Alert.alert('Error', 'Could not save recording: ' + e.message); }
+    } catch (e) { setConverting(false); Alert.alert('Error', e.message); }
   };
 
-  const playVoiceNote = async () => {
+  const playVoice = async () => {
     try {
-      if (!voiceUri) {
-        Alert.alert('No Recording', 'Please record your voice note first.');
-        return;
-      }
-      if (playing) {
-        await soundObj?.stopAsync();
-        setPlaying(false);
-        return;
-      }
+      if (!voiceUri) { Alert.alert('No Recording', 'Please record your voice note first.'); return; }
+      if (playing) { await soundObj?.stopAsync(); setPlaying(false); return; }
       const { sound } = await Audio.Sound.createAsync({ uri: voiceUri });
       setSoundObj(sound);
       setPlaying(true);
       await sound.playAsync();
-      sound.setOnPlaybackStatusUpdate((status) => {
-        if (status.didJustFinish) {
-          setPlaying(false);
-          sound.unloadAsync();
-        }
+      sound.setOnPlaybackStatusUpdate(s => {
+        if (s.didJustFinish) { setPlaying(false); sound.unloadAsync(); }
       });
-    } catch (e) {
-      setPlaying(false);
-      Alert.alert('Playback Error', e.message);
-    }
+    } catch (e) { setPlaying(false); Alert.alert('Playback Error', e.message); }
   };
 
   // ── SAVE PROFILE ──────────────────────────────────────────────────────────
-  const handleSaveProfile = async () => {
+  const saveProfile = async () => {
     if (!profilePhoto && !voiceUri) {
-      Alert.alert('Nothing to Save', 'Please upload a photo or record a voice note first.');
+      Alert.alert('Nothing to Save', 'Upload a photo or record a voice note first.');
       return;
     }
     setSaving(true);
-    await new Promise(r => setTimeout(r, 600));
+    await new Promise(r => setTimeout(r, 500));
+
+    // Make sure voice is in localStorage
+    if (voiceUri) {
+      try {
+        const userId = user?.badgeId || user?.stationId || 'unknown';
+        localStorage.setItem('tsn_voice_' + userId, voiceUri);
+        localStorage.setItem('tsn_voice', voiceUri);
+      } catch (e) {}
+    }
+
     setSaving(false);
     setProfileSaved(true);
     Alert.alert(
@@ -218,23 +195,13 @@ export default function ProfileSetupScreen({ nav }) {
   };
 
   const callEmergency = (number, label) => {
-    Alert.alert('📞 Call ' + label, 'Dial ' + number + '?',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { text: '📞 CALL NOW', onPress: () => Linking.openURL('tel:' + number) }
-      ]
-    );
+    Alert.alert('📞 Call ' + label, 'Dial ' + number + '?', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: '📞 CALL NOW', onPress: () => Linking.openURL('tel:' + number) },
+    ]);
   };
 
-  const handleLogout = () => {
-    Alert.alert('Logout', 'Are you sure?',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'LOGOUT', style: 'destructive',
-          onPress: () => { logout(); nav('login'); } }
-      ]
-    );
-  };
+  const voiceIsValid = voiceUri && !voiceUri.startsWith('blob:');
 
   return (
     <SafeAreaView style={s.safe}>
@@ -250,7 +217,7 @@ export default function ProfileSetupScreen({ nav }) {
 
       <ScrollView showsVerticalScrollIndicator={false}>
 
-        {/* Photo */}
+        {/* PHOTO */}
         <View style={s.avatarSection}>
           <TouchableOpacity onPress={showPhotoOptions} style={s.avatarWrap}>
             {profilePhoto
@@ -270,11 +237,11 @@ export default function ProfileSetupScreen({ nav }) {
           </Text>
         </View>
 
-        {/* Save button */}
+        {/* SAVE BUTTON */}
         {(profilePhoto || voiceUri) && (
           <TouchableOpacity
             style={[s.saveBtn, profileSaved && { backgroundColor: GREEN }]}
-            onPress={handleSaveProfile}
+            onPress={saveProfile}
             disabled={saving}
           >
             {saving
@@ -286,42 +253,44 @@ export default function ProfileSetupScreen({ nav }) {
           </TouchableOpacity>
         )}
 
-        {/* Voice note */}
+        {/* VOICE NOTE */}
         <View style={s.card}>
           <Text style={s.cardTitle}>🎙 VOICE IDENTITY NOTE</Text>
           <Text style={s.cardSub}>
-            Record anything in your own words. This voice plays automatically
-            to police and drivers when you trigger an SOS alert.{'\n\n'}
-            ⚠ Voice notes are saved permanently as audio data — they work
-            even after you close and reopen the app.
+            Record anything in your own words — your name, badge ID, location.
+            This voice plays to police and drivers when you trigger an SOS alert.
           </Text>
 
-          {voiceUri && !voiceUri.startsWith('blob:') && (
-            <View style={s.voiceSavedBanner}>
+          {converting && (
+            <View style={s.convertingBanner}>
+              <ActivityIndicator size="small" color={GREEN} />
+              <Text style={s.convertingTxt}>  Saving voice note permanently...</Text>
+            </View>
+          )}
+
+          {voiceIsValid && !converting && (
+            <View style={s.voiceSaved}>
               <Text style={s.voiceSavedTxt}>✅ Voice note saved permanently</Text>
               <Text style={{ fontSize: 10, color: '#555', marginTop: 3 }}>
-                Will broadcast to police & drivers on SOS
+                Broadcasts to police and drivers on SOS · Saved to your account
               </Text>
             </View>
           )}
 
           {voiceUri && voiceUri.startsWith('blob:') && (
-            <View style={[s.voiceSavedBanner, { backgroundColor: '#fff3e0' }]}>
+            <View style={[s.voiceSaved, { backgroundColor: '#fff3e0' }]}>
               <Text style={[s.voiceSavedTxt, { color: '#e65100' }]}>
                 ⚠ Voice note needs re-recording
               </Text>
               <Text style={{ fontSize: 10, color: '#555', marginTop: 3 }}>
-                Temporary recording expired — please record again below
+                Tap RECORD below to save a permanent version
               </Text>
             </View>
           )}
 
-          <View style={s.voiceBtnsRow}>
+          <View style={s.voiceBtns}>
             {isRecording ? (
-              <TouchableOpacity
-                style={[s.voiceBtn, { backgroundColor: RED, flex: 1 }]}
-                onPress={stopRecording}
-              >
+              <TouchableOpacity style={[s.voiceBtn, { backgroundColor: RED, flex: 1 }]} onPress={stopRecording}>
                 <Text style={s.voiceBtnIco}>⏹</Text>
                 <Text style={s.voiceBtnTxt}>STOP & SAVE ({recSecs}s)</Text>
               </TouchableOpacity>
@@ -329,18 +298,19 @@ export default function ProfileSetupScreen({ nav }) {
               <TouchableOpacity
                 style={[s.voiceBtn, { backgroundColor: '#333', flex: 1 }]}
                 onPress={startRecording}
+                disabled={converting}
               >
                 <Text style={s.voiceBtnIco}>🎙</Text>
                 <Text style={s.voiceBtnTxt}>
-                  {voiceUri && !voiceUri.startsWith('blob:') ? 'RE-RECORD' : 'RECORD VOICE'}
+                  {voiceIsValid ? 'RE-RECORD' : 'RECORD VOICE'}
                 </Text>
               </TouchableOpacity>
             )}
 
-            {voiceUri && !voiceUri.startsWith('blob:') && (
+            {voiceIsValid && (
               <TouchableOpacity
                 style={[s.voiceBtn, { backgroundColor: playing ? GOLD : GREEN }]}
-                onPress={playVoiceNote}
+                onPress={playVoice}
               >
                 <Text style={s.voiceBtnIco}>{playing ? '⏹' : '▶'}</Text>
                 <Text style={s.voiceBtnTxt}>{playing ? 'STOP' : 'PLAY'}</Text>
@@ -349,82 +319,78 @@ export default function ProfileSetupScreen({ nav }) {
           </View>
 
           {isRecording && (
-            <View style={s.recordingBanner}>
-              <View style={s.recordingDot} />
-              <Text style={s.recordingTxt}>
+            <View style={s.recBanner}>
+              <View style={s.recDot} />
+              <Text style={s.recTxt}>
                 🔴 Recording... {recSecs}s — Say anything in your own words. Tap STOP when done.
               </Text>
             </View>
           )}
         </View>
 
-        {/* Emergency contacts */}
+        {/* EMERGENCY CONTACTS */}
         <View style={s.card}>
           <Text style={s.cardTitle}>🚨 EMERGENCY CONTACTS</Text>
-          <Text style={s.cardSub}>Connected to your SOS button</Text>
+          <Text style={s.cardSub}>Connected to your SOS button — tap to call directly</Text>
           {[
             { label: 'Police Emergency',   number: '117',           ico: '👮', color: BLUE  },
             { label: 'Fire Brigade',       number: '118',           ico: '🚒', color: RED   },
             { label: 'Ambulance / SAMU',   number: '15',            ico: '🚑', color: GREEN },
             { label: 'TSN Command Centre', number: '+237675000000', ico: '🛡', color: '#8B4513' },
           ].map(({ label, number, ico, color }) => (
-            <TouchableOpacity
-              key={number}
-              style={s.emergencyRow}
-              onPress={() => callEmergency(number, label)}
-            >
-              <View style={[s.emergencyIcoBg, { backgroundColor: color }]}>
+            <TouchableOpacity key={number} style={s.emergRow} onPress={() => callEmergency(number, label)}>
+              <View style={[s.emergIcoBg, { backgroundColor: color }]}>
                 <Text style={{ fontSize: 20 }}>{ico}</Text>
               </View>
               <View style={{ flex: 1 }}>
-                <Text style={s.emergencyLabel}>{label}</Text>
-                <Text style={s.emergencyNumber}>{number}</Text>
+                <Text style={s.emergLabel}>{label}</Text>
+                <Text style={s.emergNum}>{number}</Text>
               </View>
-              <View style={[s.callBtn2, { backgroundColor: color }]}>
+              <View style={[s.callBtn, { backgroundColor: color }]}>
                 <Text style={s.callBtnTxt}>📞 CALL</Text>
               </View>
             </TouchableOpacity>
           ))}
         </View>
 
-        {/* Account info */}
+        {/* ACCOUNT INFO */}
         <View style={s.card}>
           <Text style={s.cardTitle}>ACCOUNT INFORMATION</Text>
           {isDriver ? (
             <>
-              <InfoRow label="Full Name"     value={user?.fullName}     ico="👤" />
-              <InfoRow label="Badge ID"      value={user?.badgeId}      ico="🪪" />
-              <InfoRow label="Phone"         value={user?.phoneNumber}  ico="📞" />
-              <InfoRow label="Network"       value={user?.network}      ico="📶" />
-              <InfoRow label="Vehicle Plate" value={user?.vehiclePlate} ico="🚗" />
-              <InfoRow label="City"          value={user?.city}         ico="📍" />
+              <InfoRow ico="👤" label="Full Name"     value={user?.fullName}     />
+              <InfoRow ico="🪪" label="Badge ID"      value={user?.badgeId}      />
+              <InfoRow ico="📞" label="Phone"         value={user?.phoneNumber}  />
+              <InfoRow ico="📶" label="Network"       value={user?.network}      />
+              <InfoRow ico="🚗" label="Vehicle Plate" value={user?.vehiclePlate} />
+              <InfoRow ico="📍" label="City"          value={user?.city}         />
             </>
           ) : (
             <>
-              <InfoRow label="Station Name"   value={user?.stationName}   ico="🏛" />
-              <InfoRow label="Station ID"     value={user?.stationId}     ico="🪪" />
-              <InfoRow label="District"       value={user?.district}      ico="📍" />
-              <InfoRow label="City"           value={user?.city}          ico="🌆" />
-              <InfoRow label="Emergency Line" value={user?.emergencyLine} ico="📞" />
-              <InfoRow label="Commander"      value={user?.commanderName} ico="👮" />
+              <InfoRow ico="🏛" label="Station Name"   value={user?.stationName}   />
+              <InfoRow ico="🪪" label="Station ID"     value={user?.stationId}     />
+              <InfoRow ico="📍" label="District"       value={user?.district}      />
+              <InfoRow ico="🌆" label="City"           value={user?.city}          />
+              <InfoRow ico="📞" label="Emergency Line" value={user?.emergencyLine} />
+              <InfoRow ico="👮" label="Commander"      value={user?.commanderName} />
             </>
           )}
         </View>
 
-        {/* Quick actions */}
+        {/* QUICK ACTIONS */}
         <View style={s.card}>
           <Text style={s.cardTitle}>QUICK ACTIONS</Text>
           {[
-            { ico: '⊞',  lbl: 'Dashboard',      to: isDriver ? 'driverDashboard' : 'policeDashboard' },
-            { ico: '🗺',  lbl: 'Live Driver Map', to: 'liveMap'    },
-            { ico: '💬', lbl: 'Community Chat',  to: 'chatBoard'   },
-            { ico: '📊', lbl: 'Statistics',      to: 'statistics'  },
+            { ico: '⊞',  lbl: 'Dashboard',           to: isDriver ? 'driverDashboard' : 'policeDashboard' },
+            { ico: '🗺',  lbl: 'Live Driver Map',     to: 'liveMap'      },
+            { ico: '💬', lbl: 'Community Chat',       to: 'chatBoard'    },
+            { ico: '📊', lbl: 'Statistics',           to: 'statistics'   },
             ...(isDriver ? [
-              { ico: '🚨', lbl: 'Report Emergency',   to: 'emergency'    },
-              { ico: '🔕', lbl: 'Deactivate My Alert', to: 'disactivation' },
+              { ico: '🚨', lbl: 'Report Emergency',   to: 'emergency'     },
+              { ico: '🔕', lbl: 'Deactivate My Alert',to: 'disactivation' },
             ] : []),
           ].map(({ ico, lbl, to }) => (
-            <TouchableOpacity key={lbl} style={s.actionBtn} onPress={() => nav(to)}>
+            <TouchableOpacity key={lbl} style={s.actionRow} onPress={() => nav(to)}>
               <Text style={s.actionIco}>{ico}</Text>
               <Text style={s.actionTxt}>{lbl}</Text>
               <Text style={s.actionArrow}>›</Text>
@@ -432,19 +398,27 @@ export default function ProfileSetupScreen({ nav }) {
           ))}
         </View>
 
-        <TouchableOpacity style={s.logoutBtn} onPress={handleLogout}>
+        {/* LOGOUT */}
+        <TouchableOpacity
+          style={s.logoutBtn}
+          onPress={() => {
+            logout();
+            nav('login');
+          }}
+        >
           <Text style={s.logoutTxt}>🚪  LOGOUT / DÉCONNEXION</Text>
         </TouchableOpacity>
 
         <View style={{ height: 40 }} />
       </ScrollView>
 
+      {/* Bottom Nav */}
       <View style={s.bottomNav}>
         {[
           { ico: '⊞', lbl: 'DASHBOARD', to: isDriver ? 'driverDashboard' : 'policeDashboard' },
           { ico: isDriver ? '⚠' : '📋', lbl: isDriver ? 'ALERTS' : 'INCIDENTS', to: isDriver ? 'emergency' : 'policeDashboard' },
-          { ico: '💬', lbl: 'CHAT',      to: 'chatBoard'    },
-          { ico: '👤', lbl: 'PROFILE',   to: 'profileSetup' },
+          { ico: '💬', lbl: 'CHAT',     to: 'chatBoard'    },
+          { ico: '👤', lbl: 'PROFILE',  to: 'profileSetup' },
         ].map(({ ico, lbl, to }) => (
           <TouchableOpacity
             key={lbl}
@@ -460,11 +434,11 @@ export default function ProfileSetupScreen({ nav }) {
   );
 }
 
-function InfoRow({ label, value, ico }) {
+function InfoRow({ ico, label, value }) {
   return (
     <View style={s.infoRow}>
       <Text style={s.infoIco}>{ico}</Text>
-      <View style={s.infoContent}>
+      <View style={{ flex: 1 }}>
         <Text style={s.infoLabel}>{label}</Text>
         <Text style={s.infoValue}>{value || '—'}</Text>
       </View>
@@ -473,55 +447,56 @@ function InfoRow({ label, value, ico }) {
 }
 
 const s = StyleSheet.create({
-  safe:             { flex: 1, backgroundColor: '#f5f5f5' },
-  header:           { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 14, backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#eee' },
-  back:             { fontSize: 22, color: RED, fontWeight: '600' },
-  headerTitle:      { fontSize: 15, fontWeight: '900', color: '#111' },
-  avatarSection:    { alignItems: 'center', paddingVertical: 28, backgroundColor: '#fff', marginBottom: 8 },
-  avatarWrap:       { position: 'relative', marginBottom: 12 },
-  avatarCircle:     { width: 110, height: 110, borderRadius: 55, backgroundColor: '#f0f0f0', alignItems: 'center', justifyContent: 'center', borderWidth: 3, borderColor: RED },
-  avatarImg:        { width: 110, height: 110, borderRadius: 55, borderWidth: 3, borderColor: RED },
-  cameraBadge:      { position: 'absolute', bottom: 0, right: 0, width: 32, height: 32, borderRadius: 16, backgroundColor: RED, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: '#fff' },
-  avatarName:       { fontSize: 22, fontWeight: '900', color: '#111', marginBottom: 8 },
-  roleBadge:        { borderRadius: 20, paddingHorizontal: 16, paddingVertical: 6, marginBottom: 6 },
-  roleTxt:          { fontSize: 12, fontWeight: '800', color: '#fff' },
-  tapHint:          { fontSize: 11, color: '#888', fontStyle: 'italic' },
-  saveBtn:          { marginHorizontal: 14, marginBottom: 8, backgroundColor: BLUE, borderRadius: 14, paddingVertical: 16, alignItems: 'center' },
-  saveBtnTxt:       { fontSize: 15, fontWeight: '900', color: '#fff' },
-  card:             { backgroundColor: '#fff', marginHorizontal: 14, marginBottom: 12, borderRadius: 16, padding: 18 },
-  cardTitle:        { fontSize: 12, fontWeight: '800', color: '#888', letterSpacing: 0.8, marginBottom: 6 },
-  cardSub:          { fontSize: 11, color: '#888', lineHeight: 17, marginBottom: 14 },
-  voiceSavedBanner: { backgroundColor: '#e8f5e9', borderRadius: 10, padding: 10, marginBottom: 12 },
-  voiceSavedTxt:    { fontSize: 12, color: GREEN, fontWeight: '700' },
-  voiceBtnsRow:     { flexDirection: 'row', gap: 8, marginBottom: 10 },
-  voiceBtn:         { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', borderRadius: 12, paddingVertical: 13, paddingHorizontal: 14, gap: 6 },
-  voiceBtnIco:      { fontSize: 18, color: '#fff' },
-  voiceBtnTxt:      { fontSize: 12, fontWeight: '800', color: '#fff' },
-  recordingBanner:  { flexDirection: 'row', alignItems: 'center', backgroundColor: '#fde8e8', borderRadius: 10, padding: 10 },
-  recordingDot:     { width: 10, height: 10, borderRadius: 5, backgroundColor: RED, marginRight: 10 },
-  recordingTxt:     { flex: 1, fontSize: 11, color: RED, fontWeight: '600', lineHeight: 16 },
-  emergencyRow:     { flexDirection: 'row', alignItems: 'center', paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#f5f5f5' },
-  emergencyIcoBg:   { width: 42, height: 42, borderRadius: 12, alignItems: 'center', justifyContent: 'center', marginRight: 12 },
-  emergencyLabel:   { fontSize: 12, fontWeight: '700', color: '#111' },
-  emergencyNumber:  { fontSize: 15, fontWeight: '900', color: '#555', marginTop: 2 },
-  callBtn2:         { borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8 },
-  callBtnTxt:       { fontSize: 11, fontWeight: '800', color: '#fff' },
-  infoRow:          { flexDirection: 'row', alignItems: 'center', paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: '#f5f5f5' },
-  infoIco:          { fontSize: 20, marginRight: 14, width: 28 },
-  infoContent:      { flex: 1 },
-  infoLabel:        { fontSize: 10, color: '#888', fontWeight: '600', letterSpacing: 0.5 },
-  infoValue:        { fontSize: 14, fontWeight: '700', color: '#111', marginTop: 2 },
-  actionBtn:        { flexDirection: 'row', alignItems: 'center', paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: '#f5f5f5' },
-  actionIco:        { fontSize: 20, marginRight: 14, width: 28 },
-  actionTxt:        { flex: 1, fontSize: 14, fontWeight: '600', color: '#111' },
-  actionArrow:      { fontSize: 22, color: '#ccc' },
-  logoutBtn:        { marginHorizontal: 14, backgroundColor: RED, borderRadius: 14, paddingVertical: 16, alignItems: 'center', marginTop: 8 },
-  logoutTxt:        { fontSize: 15, fontWeight: '900', color: '#fff' },
-  bottomNav:        { flexDirection: 'row', backgroundColor: '#fff', borderTopWidth: 1, borderTopColor: '#eee', paddingVertical: 10 },
-  navActive:        { flex: 1, alignItems: 'center', backgroundColor: RED, borderRadius: 12, paddingVertical: 6, marginHorizontal: 4 },
-  navItem:          { flex: 1, alignItems: 'center', paddingVertical: 6 },
-  navIcoA:          { fontSize: 18, color: '#fff' },
-  navTxtA:          { fontSize: 9, color: '#fff', marginTop: 2, fontWeight: '700' },
-  navIco:           { fontSize: 18, color: '#aaa' },
-  navTxt:           { fontSize: 9, color: '#aaa', marginTop: 2 },
+  safe:           { flex: 1, backgroundColor: '#f5f5f5' },
+  header:         { flexDirection:'row', alignItems:'center', justifyContent:'space-between', paddingHorizontal:16, paddingVertical:14, backgroundColor:'#fff', borderBottomWidth:1, borderBottomColor:'#eee' },
+  back:           { fontSize:22, color:RED, fontWeight:'600' },
+  headerTitle:    { fontSize:15, fontWeight:'900', color:'#111' },
+  avatarSection:  { alignItems:'center', paddingVertical:28, backgroundColor:'#fff', marginBottom:8 },
+  avatarWrap:     { position:'relative', marginBottom:12 },
+  avatarCircle:   { width:110, height:110, borderRadius:55, backgroundColor:'#f0f0f0', alignItems:'center', justifyContent:'center', borderWidth:3, borderColor:RED },
+  avatarImg:      { width:110, height:110, borderRadius:55, borderWidth:3, borderColor:RED },
+  cameraBadge:    { position:'absolute', bottom:0, right:0, width:32, height:32, borderRadius:16, backgroundColor:RED, alignItems:'center', justifyContent:'center', borderWidth:2, borderColor:'#fff' },
+  avatarName:     { fontSize:22, fontWeight:'900', color:'#111', marginBottom:8 },
+  roleBadge:      { borderRadius:20, paddingHorizontal:16, paddingVertical:6, marginBottom:6 },
+  roleTxt:        { fontSize:12, fontWeight:'800', color:'#fff' },
+  tapHint:        { fontSize:11, color:'#888', fontStyle:'italic' },
+  saveBtn:        { marginHorizontal:14, marginBottom:8, backgroundColor:BLUE, borderRadius:14, paddingVertical:16, alignItems:'center' },
+  saveBtnTxt:     { fontSize:15, fontWeight:'900', color:'#fff' },
+  card:           { backgroundColor:'#fff', marginHorizontal:14, marginBottom:12, borderRadius:16, padding:18 },
+  cardTitle:      { fontSize:12, fontWeight:'800', color:'#888', letterSpacing:0.8, marginBottom:6 },
+  cardSub:        { fontSize:11, color:'#888', lineHeight:17, marginBottom:14 },
+  convertingBanner:{ flexDirection:'row', alignItems:'center', backgroundColor:'#e8f5e9', borderRadius:10, padding:10, marginBottom:12 },
+  convertingTxt:  { fontSize:12, color:GREEN, fontWeight:'600' },
+  voiceSaved:     { backgroundColor:'#e8f5e9', borderRadius:10, padding:10, marginBottom:12 },
+  voiceSavedTxt:  { fontSize:12, color:GREEN, fontWeight:'700' },
+  voiceBtns:      { flexDirection:'row', gap:8, marginBottom:10 },
+  voiceBtn:       { flexDirection:'row', alignItems:'center', justifyContent:'center', borderRadius:12, paddingVertical:13, paddingHorizontal:14, gap:6 },
+  voiceBtnIco:    { fontSize:18, color:'#fff' },
+  voiceBtnTxt:    { fontSize:12, fontWeight:'800', color:'#fff' },
+  recBanner:      { flexDirection:'row', alignItems:'center', backgroundColor:'#fde8e8', borderRadius:10, padding:10 },
+  recDot:         { width:10, height:10, borderRadius:5, backgroundColor:RED, marginRight:10 },
+  recTxt:         { flex:1, fontSize:11, color:RED, fontWeight:'600', lineHeight:16 },
+  emergRow:       { flexDirection:'row', alignItems:'center', paddingVertical:12, borderBottomWidth:1, borderBottomColor:'#f5f5f5' },
+  emergIcoBg:     { width:42, height:42, borderRadius:12, alignItems:'center', justifyContent:'center', marginRight:12 },
+  emergLabel:     { fontSize:12, fontWeight:'700', color:'#111' },
+  emergNum:       { fontSize:15, fontWeight:'900', color:'#555', marginTop:2 },
+  callBtn:        { borderRadius:10, paddingHorizontal:12, paddingVertical:8 },
+  callBtnTxt:     { fontSize:11, fontWeight:'800', color:'#fff' },
+  infoRow:        { flexDirection:'row', alignItems:'center', paddingVertical:10, borderBottomWidth:1, borderBottomColor:'#f5f5f5' },
+  infoIco:        { fontSize:20, marginRight:14, width:28 },
+  infoLabel:      { fontSize:10, color:'#888', fontWeight:'600', letterSpacing:0.5 },
+  infoValue:      { fontSize:14, fontWeight:'700', color:'#111', marginTop:2 },
+  actionRow:      { flexDirection:'row', alignItems:'center', paddingVertical:14, borderBottomWidth:1, borderBottomColor:'#f5f5f5' },
+  actionIco:      { fontSize:20, marginRight:14, width:28 },
+  actionTxt:      { flex:1, fontSize:14, fontWeight:'600', color:'#111' },
+  actionArrow:    { fontSize:22, color:'#ccc' },
+  logoutBtn:      { marginHorizontal:14, backgroundColor:RED, borderRadius:14, paddingVertical:18, alignItems:'center', marginTop:8, marginBottom:8 },
+  logoutTxt:      { fontSize:16, fontWeight:'900', color:'#fff' },
+  bottomNav:      { flexDirection:'row', backgroundColor:'#fff', borderTopWidth:1, borderTopColor:'#eee', paddingVertical:10 },
+  navActive:      { flex:1, alignItems:'center', backgroundColor:RED, borderRadius:12, paddingVertical:6, marginHorizontal:4 },
+  navItem:        { flex:1, alignItems:'center', paddingVertical:6 },
+  navIcoA:        { fontSize:18, color:'#fff' },
+  navTxtA:        { fontSize:9, color:'#fff', marginTop:2, fontWeight:'700' },
+  navIco:         { fontSize:18, color:'#aaa' },
+  navTxt:         { fontSize:9, color:'#aaa', marginTop:2 },
 });
