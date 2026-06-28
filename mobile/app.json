@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "Taxi Safety Network",
+    "name": "TSN - Taxi Safety Network",
     "slug": "taxi-safety-network",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -9,12 +9,12 @@
     "splash": {
       "image": "./assets/splash.png",
       "resizeMode": "contain",
-      "backgroundColor": "#ffffff"
+      "backgroundColor": "#d32f2f"
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#ffffff"
+        "backgroundColor": "#d32f2f"
       },
       "config": {
         "googleMaps": {
@@ -28,11 +28,14 @@
         "READ_EXTERNAL_STORAGE",
         "WRITE_EXTERNAL_STORAGE",
         "CAMERA",
-        "CALL_PHONE"
-      ]
+        "CALL_PHONE",
+        "SEND_SMS"
+      ],
+      "package": "com.tsn.taxisafetynetwork"
     },
     "ios": {
       "supportsTablet": true,
+      "bundleIdentifier": "com.tsn.taxisafetynetwork",
       "infoPlist": {
         "NSLocationWhenInUseUsageDescription": "TSN needs location to send accurate emergency alerts.",
         "NSMicrophoneUsageDescription": "TSN needs microphone to record your voice identity note.",
@@ -42,20 +45,22 @@
     },
     "web": {
       "favicon": "./assets/favicon.png",
-      "bundler": "metro"
+      "bundler": "metro",
+      "name": "TSN - Taxi Safety Network",
+      "shortName": "TSN",
+      "description": "Taxi Safety Network - Emergency alert system for taxi drivers in Cameroon",
+      "themeColor": "#d32f2f",
+      "backgroundColor": "#ffffff",
+      "display": "standalone",
+      "orientation": "portrait",
+      "scope": "/",
+      "startUrl": "/"
     },
     "plugins": [
       [
         "expo-location",
         {
           "locationAlwaysAndWhenInUsePermission": "TSN needs location for emergency alerts."
-        }
-      ],
-      [
-        "expo-image-picker",
-        {
-          "photosPermission": "TSN needs photo library to update your profile picture.",
-          "cameraPermission": "TSN needs camera to take your profile photo."
         }
       ],
       [
