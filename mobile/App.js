@@ -1,6 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { View, ActivityIndicator } from 'react-native';
 import * as Location from 'expo-location';
+import * as Font from 'expo-font';
+import { MaterialIcons, Ionicons, FontAwesome5 } from '@expo/vector-icons';
 import { AuthProvider, useAuth } from './services/AuthContext';
 
 import LoginScreen         from './screens/LoginScreen';
@@ -20,9 +22,29 @@ import SettingsScreen      from './screens/SettingsScreen';
 
 function Navigator() {
   const { user, role, loading } = useAuth();
-  const [screen,   setScreen]   = useState('login');
-  const [location, setLocation] = useState(null);
+  const [screen,      setScreen]      = useState('login');
+  const [location,    setLocation]    = useState(null);
+  const [fontsLoaded, setFontsLoaded] = useState(false);
 
+  // ── Load icon fonts ────────────────────────────────────────────────────────
+  useEffect(() => {
+    async function loadFonts() {
+      try {
+        await Font.loadAsync({
+          ...MaterialIcons.font,
+          ...Ionicons.font,
+          ...FontAwesome5.font,
+        });
+      } catch (e) {
+        console.log('Font load error:', e.message);
+      } finally {
+        setFontsLoaded(true);
+      }
+    }
+    loadFonts();
+  }, []);
+
+  // ── Navigate when auth changes ─────────────────────────────────────────────
   useEffect(() => {
     if (loading) return;
     if (user && role === 'driver') {
@@ -34,6 +56,7 @@ function Navigator() {
     }
   }, [user, role, loading]);
 
+  // ── GPS ───────────────────────────────────────────────────────────────────
   useEffect(() => {
     let subscription;
     (async () => {
@@ -55,10 +78,14 @@ function Navigator() {
     return () => { if (subscription) subscription.remove(); };
   }, []);
 
-  if (loading) {
+  // ── Show spinner while fonts or auth loading ───────────────────────────────
+  if (loading || !fontsLoaded) {
     return (
-      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#f5f5f5' }}>
-        <ActivityIndicator size="large" color="#d32f2f" />
+      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#d32f2f' }}>
+        <ActivityIndicator size="large" color="#fff" />
+        <View style={{ marginTop: 20 }}>
+          <MaterialIcons name="shield" size={48} color="#fff" />
+        </View>
       </View>
     );
   }
