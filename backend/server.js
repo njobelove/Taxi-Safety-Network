@@ -294,6 +294,16 @@ app.get('/api/drivers/live', (req, res) => {
   res.json({ drivers: Object.values(liveDrivers) });
 });
 
+// ── ALERT HISTORY (all alerts including resolved) ─────────────────────────────
+app.get('/api/alerts/history', async (req, res) => {
+  try {
+    const alerts = await Alert.find()
+      .sort({ createdAt: -1 })
+      .limit(200);
+    res.json({ alerts });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // ── STATS ─────────────────────────────────────────────────────────────────────
 app.get('/api/stats', async (req, res) => {
   try {
@@ -452,6 +462,7 @@ server.listen(PORT, () => {
   console.log('   POST /api/auth/stations/register');
   console.log('   POST /api/auth/stations/login');
   console.log('   GET  /api/alerts');
+  console.log('   GET  /api/alerts/history');
   console.log('   POST /api/alerts/sos');
   console.log('   PUT  /api/alerts/:id/status');
   console.log('   GET  /api/responders/nearby');
