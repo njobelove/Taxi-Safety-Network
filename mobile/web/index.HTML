@@ -4,58 +4,48 @@
     <meta charset="utf-8" />
     <meta httpEquiv="X-UA-Compatible" content="IE=edge" />
     <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
+
+    <!-- PWA -->
     <meta name="theme-color" content="#d32f2f" />
     <meta name="application-name" content="TSN" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="#d32f2f" />
     <meta name="apple-mobile-web-app-title" content="TSN" />
     <meta name="description" content="Taxi Safety Network - Emergency alert system for taxi drivers in Cameroon" />
+    <meta name="mobile-web-app-capable" content="yes" />
     <link rel="manifest" href="/manifest.json" />
+    <link rel="apple-touch-icon" href="/favicon.ico" />
     <title>TSN - Taxi Safety Network</title>
 
-    <!-- ✅ Material Icons font from Google CDN — fixes empty square icons on web -->
-    <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet" />
-
-    <!-- ✅ Load all vector icon fonts directly -->
     <style>
+      /* Force icon fonts to load from bundled assets */
       @font-face {
         font-family: 'MaterialIcons';
-        src: url('https://fonts.gstatic.com/s/materialicons/v140/flUhRq6tzZclQEJ-Vdg-IuiaDsNcIhQ8tQ.woff2') format('woff2');
+        src: url('/assets/MaterialIcons.ttf') format('truetype');
         font-display: block;
+        font-weight: normal;
+        font-style: normal;
       }
       @font-face {
         font-family: 'Ionicons';
-        src: url('https://cdn.jsdelivr.net/npm/ionicons@5.5.4/dist/fonts/ionicons.woff2') format('woff2');
+        src: url('/assets/Ionicons.ttf') format('truetype');
         font-display: block;
-      }
-      @font-face {
-        font-family: 'FontAwesome';
-        src: url('https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/webfonts/fa-solid-900.woff2') format('woff2');
-        font-display: block;
+        font-weight: normal;
+        font-style: normal;
       }
       @font-face {
         font-family: 'FontAwesome5_Solid';
-        src: url('https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/webfonts/fa-solid-900.woff2') format('woff2');
+        src: url('/assets/FontAwesome5_Solid.ttf') format('truetype');
         font-display: block;
+        font-weight: normal;
+        font-style: normal;
       }
       @font-face {
         font-family: 'FontAwesome5_Regular';
-        src: url('https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/webfonts/fa-regular-400.woff2') format('woff2');
+        src: url('/assets/FontAwesome5_Regular.ttf') format('truetype');
         font-display: block;
-      }
-      @font-face {
-        font-family: 'FontAwesome5_Brands';
-        src: url('https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/webfonts/fa-brands-400.woff2') format('woff2');
-        font-display: block;
-      }
-      @font-face {
-        font-family: 'AntDesign';
-        src: url('https://cdn.jsdelivr.net/npm/@expo/vector-icons@14.0.0/build/vendor/react-native-vector-icons/Fonts/AntDesign.ttf') format('truetype');
-        font-display: block;
-      }
-      @font-face {
-        font-family: 'Feather';
-        src: url('https://cdn.jsdelivr.net/npm/@expo/vector-icons@14.0.0/build/vendor/react-native-vector-icons/Fonts/Feather.ttf') format('truetype');
-        font-display: block;
+        font-weight: normal;
+        font-style: normal;
       }
 
       html, body, #root {
@@ -63,12 +53,13 @@
         height: 100%;
         margin: 0;
         padding: 0;
-        background-color: #ffffff;
+        background-color: #d32f2f;
         overflow: hidden;
       }
       #root {
         display: flex;
         flex: 1;
+        background-color: #ffffff;
       }
     </style>
   </head>
