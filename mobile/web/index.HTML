@@ -4,49 +4,58 @@
     <meta charset="utf-8" />
     <meta httpEquiv="X-UA-Compatible" content="IE=edge" />
     <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
-
-    <!-- PWA Meta Tags -->
+    <meta name="theme-color" content="#d32f2f" />
     <meta name="application-name" content="TSN" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
-    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <meta name="apple-mobile-web-app-title" content="TSN" />
     <meta name="description" content="Taxi Safety Network - Emergency alert system for taxi drivers in Cameroon" />
-    <meta name="format-detection" content="telephone=no" />
-    <meta name="mobile-web-app-capable" content="yes" />
-    <meta name="theme-color" content="#d32f2f" />
-
-    <!-- PWA Manifest -->
     <link rel="manifest" href="/manifest.json" />
+    <title>TSN - Taxi Safety Network</title>
 
-    <!-- Icons -->
-    <link rel="shortcut icon" href="/favicon.ico" />
-    <link rel="apple-touch-icon" href="/icon-192.png" />
+    <!-- ✅ Material Icons font from Google CDN — fixes empty square icons on web -->
+    <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet" />
 
-    <!-- Vector Icons Font Files — REQUIRED for web -->
+    <!-- ✅ Load all vector icon fonts directly -->
     <style>
       @font-face {
         font-family: 'MaterialIcons';
         src: url('https://fonts.gstatic.com/s/materialicons/v140/flUhRq6tzZclQEJ-Vdg-IuiaDsNcIhQ8tQ.woff2') format('woff2');
-        font-weight: normal;
-        font-style: normal;
-      }
-      @font-face {
-        font-family: 'MaterialCommunityIcons';
-        src: url('https://github.com/oblador/react-native-vector-icons/raw/master/Fonts/MaterialCommunityIcons.ttf') format('truetype');
-        font-weight: normal;
-        font-style: normal;
+        font-display: block;
       }
       @font-face {
         font-family: 'Ionicons';
-        src: url('https://unpkg.com/ionicons@5.5.4/dist/fonts/ionicons.woff2') format('woff2');
-        font-weight: normal;
-        font-style: normal;
+        src: url('https://cdn.jsdelivr.net/npm/ionicons@5.5.4/dist/fonts/ionicons.woff2') format('woff2');
+        font-display: block;
+      }
+      @font-face {
+        font-family: 'FontAwesome';
+        src: url('https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/webfonts/fa-solid-900.woff2') format('woff2');
+        font-display: block;
+      }
+      @font-face {
+        font-family: 'FontAwesome5_Solid';
+        src: url('https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/webfonts/fa-solid-900.woff2') format('woff2');
+        font-display: block;
       }
       @font-face {
         font-family: 'FontAwesome5_Regular';
         src: url('https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/webfonts/fa-regular-400.woff2') format('woff2');
-        font-weight: normal;
-        font-style: normal;
+        font-display: block;
+      }
+      @font-face {
+        font-family: 'FontAwesome5_Brands';
+        src: url('https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/webfonts/fa-brands-400.woff2') format('woff2');
+        font-display: block;
+      }
+      @font-face {
+        font-family: 'AntDesign';
+        src: url('https://cdn.jsdelivr.net/npm/@expo/vector-icons@14.0.0/build/vendor/react-native-vector-icons/Fonts/AntDesign.ttf') format('truetype');
+        font-display: block;
+      }
+      @font-face {
+        font-family: 'Feather';
+        src: url('https://cdn.jsdelivr.net/npm/@expo/vector-icons@14.0.0/build/vendor/react-native-vector-icons/Fonts/Feather.ttf') format('truetype');
+        font-display: block;
       }
 
       html, body, #root {
