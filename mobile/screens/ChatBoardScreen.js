@@ -4,6 +4,7 @@ import {
   ScrollView, SafeAreaView, TextInput,
   ActivityIndicator, Alert, Linking, Platform,
 } from 'react-native';
+import { MaterialIcons, Ionicons } from '@expo/vector-icons';
 import { Audio } from 'expo-av';
 import { useAuth } from '../services/AuthContext';
 
@@ -56,8 +57,6 @@ export default function ChatBoardScreen({ nav, location }) {
   const soundRef     = useRef(null);
   const timerRef     = useRef(null);
   const intervalRef  = useRef(null);
-
-  // local store for voice URIs by message id (survives in-session navigation)
   const voiceStore   = useRef({});
 
   useEffect(() => {
@@ -80,11 +79,22 @@ export default function ChatBoardScreen({ nav, location }) {
       setError(null);
       const res  = await fetch(BASE_URL + '/api/chat/messages');
       const data = await res.json();
-      setMessages(data.messages || []);
+      const msgs = (data.messages || []).map(msg => {
+        // Restore voiceUri from local store if server doesn't have it
+        const id = msg.id || msg._id;
+        const storedUri = voiceStore.current[id];
+        if (msg.type === 'voice' && storedUri && !msg.voiceUri) {
+          return { ...msg, voiceUri: storedUri };
+        }
+        // Also store server voiceUri in local store for future use
+        if (msg.type === 'voice' && msg.voiceUri && !msg.voiceUri.startsWith('blob:')) {
+          voiceStore.current[id] = msg.voiceUri;
+        }
+        return msg;
+      });
+      setMessages(msgs);
       setTimeout(() => scrollRef.current?.scrollToEnd({ animated: false }), 200);
-    } catch (e) {
-      setError('Could not load messages. Check connection.');
-    }
+    } catch (e) { setError('Could not load messages. Check connection.'); }
   };
 
   const loadTips = async () => {
@@ -95,7 +105,6 @@ export default function ChatBoardScreen({ nav, location }) {
     } catch (e) {}
   };
 
-  // ── Convert blob to base64 ────────────────────────────────────────────────
   const blobToBase64 = async (uri) => {
     try {
       if (Platform.OS === 'web' && uri.startsWith('blob:')) {
@@ -109,249 +118,123 @@ export default function ChatBoardScreen({ nav, location }) {
         });
       }
       return uri;
-    } catch (e) {
-      return uri;
-    }
+    } catch (e) { return uri; }
   };
 
-  // ── Send TEXT ─────────────────────────────────────────────────────────────
   const handleSend = async () => {
     const text = input.trim();
     if (!text) return;
-    const local = {
-      id: 'local_' + Date.now(),
-      senderId: myId, senderName: myName,
-      senderType: role || 'driver',
-      message: text,
-      type: role === 'police' ? 'tip' : 'text',
-      timestamp: new Date().toISOString(), likes: 0,
-    };
+    const local = { id: 'local_' + Date.now(), senderId: myId, senderName: myName, senderType: role || 'driver', message: text, type: role === 'police' ? 'tip' : 'text', timestamp: new Date().toISOString(), likes: 0 };
     setMessages(prev => [...prev, local]);
     setInput('');
     setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 100);
     try {
-      const res   = await fetch(BASE_URL + '/api/chat/messages', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          senderId: myId, senderName: myName,
-          senderType: role || 'driver', message: text,
-          type: role === 'police' ? 'tip' : 'text',
-        }),
-      });
+      const res  = await fetch(BASE_URL + '/api/chat/messages', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ senderId: myId, senderName: myName, senderType: role || 'driver', message: text, type: role === 'police' ? 'tip' : 'text' }) });
       const saved = await res.json();
-      setMessages(prev => prev.map(m =>
-        m.id === local.id ? { ...saved, senderName: myName, senderType: role } : m
-      ));
+      setMessages(prev => prev.map(m => m.id === local.id ? { ...saved, senderName: myName, senderType: role } : m));
     } catch (e) {}
   };
 
-  // ── Share location ────────────────────────────────────────────────────────
   const handleShareLocation = async () => {
-    if (!location) {
-      Alert.alert('Location not available', 'Please enable location access first.');
-      return;
-    }
+    if (!location) { Alert.alert('Location not available', 'Please enable location access first.'); return; }
     const lat  = location.latitude.toFixed(5);
     const lng  = location.longitude.toFixed(5);
     const url  = 'https://maps.google.com?q=' + lat + ',' + lng;
-    const text = '📍 My Live Location\n' + lat + '° N, ' + lng + '° E\n' + url;
-    const local = {
-      id: 'local_' + Date.now(),
-      senderId: myId, senderName: myName,
-      senderType: role || 'driver',
-      message: text, type: 'location',
-      timestamp: new Date().toISOString(), likes: 0,
-    };
+    const text = 'My Live Location\n' + lat + '° N, ' + lng + '° E\n' + url;
+    const local = { id: 'local_' + Date.now(), senderId: myId, senderName: myName, senderType: role || 'driver', message: text, type: 'location', timestamp: new Date().toISOString(), likes: 0 };
     setMessages(prev => [...prev, local]);
     setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 100);
-    try {
-      await fetch(BASE_URL + '/api/chat/messages', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          senderId: myId, senderName: myName,
-          senderType: role, message: text, type: 'location',
-        }),
-      });
-    } catch (e) {}
+    try { await fetch(BASE_URL + '/api/chat/messages', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ senderId: myId, senderName: myName, senderType: role, message: text, type: 'location' }) }); } catch (e) {}
   };
 
-  // ── Start recording ───────────────────────────────────────────────────────
   const startRecording = async () => {
     try {
       const { status } = await Audio.requestPermissionsAsync();
-      if (status !== 'granted') {
-        Alert.alert('Permission Required', 'Please allow microphone access.');
-        return;
-      }
+      if (status !== 'granted') { Alert.alert('Permission Required', 'Please allow microphone access.'); return; }
       await Audio.setAudioModeAsync({ allowsRecordingIOS: true, playsInSilentModeIOS: true });
-      const { recording } = await Audio.Recording.createAsync(
-        Audio.RecordingOptionsPresets.HIGH_QUALITY
-      );
+      const { recording } = await Audio.Recording.createAsync(Audio.RecordingOptionsPresets.HIGH_QUALITY);
       recordingRef.current = recording;
-      setIsRecording(true);
-      setRecSecs(0);
+      setIsRecording(true); setRecSecs(0);
       timerRef.current = setInterval(() => setRecSecs(s => s + 1), 1000);
     } catch (e) { Alert.alert('Error', e.message); }
   };
 
-  // ── Stop and send voice ───────────────────────────────────────────────────
   const stopRecording = async () => {
     if (!isRecording || !recordingRef.current) return;
     clearInterval(timerRef.current);
     const secs = recSecs;
-    setIsRecording(false);
-    setRecSecs(0);
+    setIsRecording(false); setRecSecs(0);
     try {
       await recordingRef.current.stopAndUnloadAsync();
-      const blobUri = recordingRef.current.getURI();
+      const blobUri   = recordingRef.current.getURI();
       if (!blobUri || secs < 1) return;
-
-      // ── KEY FIX: Convert blob to base64 BEFORE sending ──────────────────
-      // This makes the voice note permanent — survives page reload
       const base64Uri = await blobToBase64(blobUri);
-
-      const msgId = 'local_' + Date.now();
-
-      // Store the base64 URI locally so we can play it immediately
+      const msgId     = 'local_' + Date.now();
       voiceStore.current[msgId] = base64Uri;
-
-      const local = {
-        id: msgId,
-        senderId: myId, senderName: myName,
-        senderType: role || 'driver',
-        message: '🎙 Voice note (' + secs + 's)',
-        type: 'voice',
-        voiceUri: base64Uri, // attach for immediate playback
-        timestamp: new Date().toISOString(), likes: 0,
-      };
+      const local = { id: msgId, senderId: myId, senderName: myName, senderType: role || 'driver', message: 'Voice note (' + secs + 's)', type: 'voice', voiceUri: base64Uri, timestamp: new Date().toISOString(), likes: 0 };
       setMessages(prev => [...prev, local]);
       setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 100);
-
-      // Send to backend — save base64 voice URI in MongoDB
       try {
-        const res   = await fetch(BASE_URL + '/api/chat/messages', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            senderId: myId, senderName: myName, senderType: role,
-            message: '🎙 Voice note (' + secs + 's)',
-            type: 'voice',
-            voiceUri: base64Uri, // saved to MongoDB
-          }),
-        });
+        const res   = await fetch(BASE_URL + '/api/chat/messages', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ senderId: myId, senderName: myName, senderType: role, message: 'Voice note (' + secs + 's)', type: 'voice', voiceUri: base64Uri }) });
         const saved = await res.json();
-        // Update local message with server ID, keep voiceUri for playback
         voiceStore.current[saved.id || saved._id] = base64Uri;
-        setMessages(prev => prev.map(m =>
-          m.id === msgId
-            ? { ...saved, senderName: myName, senderType: role, voiceUri: base64Uri }
-            : m
-        ));
-      } catch (e) {
-        console.log('Voice send error:', e.message);
-      }
-
+        setMessages(prev => prev.map(m => m.id === msgId ? { ...saved, senderName: myName, senderType: role, voiceUri: base64Uri } : m));
+      } catch (e) {}
     } catch (e) { Alert.alert('Recording Error', e.message); }
   };
 
-  // ── Play voice note ───────────────────────────────────────────────────────
   const playVoice = async (msg) => {
-    const id = msg.id || msg._id;
-
-    // Stop if already playing this one
-    if (playingId === id) {
-      await soundRef.current?.stopAsync();
-      setPlayingId(null);
-      return;
-    }
-
-    // Get the voice URI — check local store first, then message
+    const id  = msg.id || msg._id;
     const uri = voiceStore.current[id] || msg.voiceUri;
-
-    if (!uri) {
-      Alert.alert(
-        '🎙 Voice Note',
-        'This voice note is not available for playback.\n\nVoice notes can only be played on the device and session they were recorded in.'
-      );
+    if (playingId === id) { await soundRef.current?.stopAsync(); setPlayingId(null); return; }
+    if (!uri || uri.startsWith('blob:')) {
+      Alert.alert('Voice Note', uri ? 'This voice note expired. New recordings are permanent.' : 'Voice note not available.');
       return;
     }
-
-    // Check for expired blob URLs
-    if (uri.startsWith('blob:')) {
-      Alert.alert(
-        '🎙 Voice Note Expired',
-        'This voice note was recorded before the permanent storage update and cannot be played.\n\nNew voice notes you record now will play permanently.'
-      );
-      return;
-    }
-
     try {
       if (soundRef.current) await soundRef.current.unloadAsync();
-      await Audio.setAudioModeAsync({ playsInSilentModeIOS: true, allowsRecordingIOS: false });
-      const { sound } = await Audio.Sound.createAsync(
-        { uri }, { shouldPlay: true, volume: 1.0 }
-      );
-      soundRef.current = sound;
-      setPlayingId(id);
-      sound.setOnPlaybackStatusUpdate(s => {
-        if (s.didJustFinish) {
-          setPlayingId(null);
-          sound.unloadAsync();
-        }
-      });
-    } catch (e) {
-      setPlayingId(null);
-      Alert.alert('Playback Error', 'Could not play this voice note: ' + e.message);
-    }
+      const { sound } = await Audio.Sound.createAsync({ uri }, { shouldPlay: true, volume: 1.0 });
+      soundRef.current = sound; setPlayingId(id);
+      sound.setOnPlaybackStatusUpdate(s => { if (s.didJustFinish) { setPlayingId(null); sound.unloadAsync(); } });
+    } catch (e) { setPlayingId(null); Alert.alert('Playback Error', e.message); }
   };
 
-  // ── Like ──────────────────────────────────────────────────────────────────
   const handleLike = async (id) => {
-    setMessages(prev => prev.map(m =>
-      (m.id === id || m._id === id) ? { ...m, likes: (m.likes || 0) + 1 } : m
-    ));
-    try {
-      await fetch(BASE_URL + '/api/chat/messages/' + id + '/like', { method: 'POST' });
-    } catch (e) {}
+    setMessages(prev => prev.map(m => (m.id===id||m._id===id) ? {...m, likes:(m.likes||0)+1} : m));
+    try { await fetch(BASE_URL + '/api/chat/messages/' + id + '/like', { method: 'POST' }); } catch (e) {}
   };
 
   return (
     <SafeAreaView style={s.safe}>
-
-      {/* Header */}
       <View style={s.header}>
         <TouchableOpacity onPress={() => nav(role === 'police' ? 'policeDashboard' : 'driverDashboard')}>
-          <Text style={s.back}>←</Text>
+          <MaterialIcons name="arrow-back" size={24} color={RED} />
         </TouchableOpacity>
-        <View style={s.hAvatar}><Text style={{ fontSize: 20 }}>🛡</Text></View>
+        <View style={s.hAvatar}><Ionicons name="shield-checkmark" size={22} color="#fff" /></View>
         <View style={{ flex: 1 }}>
           <Text style={s.hName}>TSN Community Group</Text>
-          <Text style={s.hSub}>🟢 {messages.length} messages · All drivers & police</Text>
+          <Text style={s.hSub}>{messages.length} messages · All drivers & police</Text>
         </View>
         <TouchableOpacity onPress={() => { setLoading(true); loadMessages(); }}>
-          <Text style={{ fontSize: 22, color: GREEN, marginLeft: 8 }}>↻</Text>
+          <MaterialIcons name="refresh" size={24} color={GREEN} />
         </TouchableOpacity>
       </View>
 
-      {/* Tabs */}
       <View style={s.tabs}>
         <TouchableOpacity style={[s.tab, tab === 'chat' && s.tabOn]} onPress={() => setTab('chat')}>
-          <Text style={[s.tabTxt, tab === 'chat' && s.tabTxtOn]}>💬 Group Chat ({messages.length})</Text>
+          <MaterialIcons name="chat" size={16} color={tab === 'chat' ? '#fff' : '#666'} />
+          <Text style={[s.tabTxt, tab === 'chat' && s.tabTxtOn]}>Group Chat ({messages.length})</Text>
         </TouchableOpacity>
-        <TouchableOpacity
-          style={[s.tab, tab === 'tips' && { ...s.tabOn, backgroundColor: BLUE }]}
-          onPress={() => setTab('tips')}
-        >
-          <Text style={[s.tabTxt, tab === 'tips' && s.tabTxtOn]}>🛡 Safety Tips</Text>
+        <TouchableOpacity style={[s.tab, tab === 'tips' && { ...s.tabOn, backgroundColor: BLUE }]} onPress={() => setTab('tips')}>
+          <MaterialIcons name="security" size={16} color={tab === 'tips' ? '#fff' : '#666'} />
+          <Text style={[s.tabTxt, tab === 'tips' && s.tabTxtOn]}>Safety Tips</Text>
         </TouchableOpacity>
       </View>
 
-      {/* Error */}
       {error && (
         <View style={s.errBanner}>
-          <Text style={s.errTxt}>⚠ {error}</Text>
+          <MaterialIcons name="wifi-off" size={16} color="#ff8a80" />
+          <Text style={s.errTxt}>{error}</Text>
           <TouchableOpacity onPress={loadMessages}>
             <Text style={s.retryTxt}>RETRY</Text>
           </TouchableOpacity>
@@ -366,17 +249,15 @@ export default function ChatBoardScreen({ nav, location }) {
       ) : tab === 'chat' ? (
         <View style={{ flex: 1 }}>
           <ScrollView ref={scrollRef} style={s.list} showsVerticalScrollIndicator={false}>
-
             <View style={s.notice}>
-              <Text style={s.noticeTxt}>
-                🔒 Messages saved permanently · Hold 🎙 to record voice · Tap 📍 to share location
-              </Text>
+              <MaterialIcons name="lock" size={12} color="#666" />
+              <Text style={s.noticeTxt}>Messages saved permanently · Hold mic to record voice · Tap pin to share location</Text>
             </View>
 
             {messages.length === 0 ? (
               <View style={{ alignItems: 'center', paddingVertical: 60 }}>
-                <Text style={{ fontSize: 48, marginBottom: 12 }}>💬</Text>
-                <Text style={{ fontSize: 18, fontWeight: '700', color: '#555' }}>No messages yet</Text>
+                <MaterialIcons name="chat-bubble-outline" size={52} color="#555" />
+                <Text style={{ fontSize: 18, fontWeight: '700', color: '#555', marginTop: 12 }}>No messages yet</Text>
               </View>
             ) : messages.map((msg, idx) => {
               const id        = msg.id || msg._id || String(idx);
@@ -391,10 +272,8 @@ export default function ChatBoardScreen({ nav, location }) {
               const showDate  = !prev || new Date(msg.timestamp).toDateString() !== new Date(prev.timestamp).toDateString();
               const showName  = !isMe && (!prev || prev.senderId !== msg.senderId);
               const isLast    = !next || next.senderId !== msg.senderId;
-
-              // Check if this voice note can be played
-              const voiceUri   = voiceStore.current[id] || msg.voiceUri;
-              const canPlay    = !!voiceUri && !voiceUri.startsWith('blob:');
+              const voiceUri  = voiceStore.current[id] || msg.voiceUri;
+              const canPlay   = !!voiceUri && !voiceUri.startsWith('blob:');
 
               return (
                 <View key={id}>
@@ -402,101 +281,73 @@ export default function ChatBoardScreen({ nav, location }) {
                     <View style={s.dateSep}>
                       <View style={s.dateLine} />
                       <View style={s.datePill}>
-                        <Text style={s.dateTxt}>
-                          {new Date(msg.timestamp).toLocaleDateString('en-GB', {
-                            day: 'numeric', month: 'short', year: 'numeric'
-                          })}
-                        </Text>
+                        <Text style={s.dateTxt}>{new Date(msg.timestamp).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}</Text>
                       </View>
                       <View style={s.dateLine} />
                     </View>
                   )}
-
                   <View style={[s.row, isMe && s.rowMe]}>
                     {!isMe && (
                       <View style={s.aCol}>
                         {isLast
                           ? <View style={[s.av, { backgroundColor: isPolice ? BLUE : col }]}>
-                              <Text style={s.avTxt}>{isPolice ? '🏛' : getInitials(msg.senderName)}</Text>
+                              <Text style={s.avTxt}>{isPolice ? 'P' : getInitials(msg.senderName)}</Text>
                             </View>
                           : <View style={{ width: 34 }} />
                         }
                       </View>
                     )}
-
                     <View style={[s.block, isMe && { alignItems: 'flex-end' }]}>
                       {showName && (
-                        <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 3, marginLeft: 4 }}>
-                          <Text style={[s.name, { color: isPolice ? '#90caf9' : col }]}>
-                            {isPolice ? '🏛 ' : '🚖 '}{msg.senderName || 'Unknown'}
-                          </Text>
-                          <Text style={s.nameId}>
-                            {isPolice ? ' · Police' : ' · ' + msg.senderId}
-                          </Text>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 3, marginLeft: 4, gap: 4 }}>
+                          <MaterialIcons name={isPolice ? 'local-police' : 'directions-car'} size={12} color={isPolice ? '#90caf9' : col} />
+                          <Text style={[s.name, { color: isPolice ? '#90caf9' : col }]}>{msg.senderName || 'Unknown'}</Text>
+                          <Text style={s.nameId}>{isPolice ? '· Police' : '· ' + msg.senderId}</Text>
                         </View>
                       )}
-
-                      <View style={[
-                        s.bubble,
-                        isMe ? s.bMe : isPolice ? s.bPolice : s.bOther,
-                      ]}>
+                      <View style={[s.bubble, isMe ? s.bMe : isPolice ? s.bPolice : s.bOther]}>
                         {msg.type === 'tip' && (
                           <View style={s.polBadge}>
-                            <Text style={s.polBadgeTxt}>🛡 OFFICIAL TIP</Text>
+                            <MaterialIcons name="verified" size={12} color="#90caf9" />
+                            <Text style={s.polBadgeTxt}>OFFICIAL TIP</Text>
                           </View>
                         )}
-
                         {isVoice ? (
-                          <TouchableOpacity
-                            style={s.voiceRow}
-                            onPress={() => playVoice({ ...msg, voiceUri })}
-                          >
+                          <TouchableOpacity style={s.voiceRow} onPress={() => playVoice({ ...msg, voiceUri })}>
                             <View style={[s.playBtn, isPlaying && { backgroundColor: GOLD }, !canPlay && { backgroundColor: '#444' }]}>
-                              <Text style={{ fontSize: 16, color: '#fff' }}>
-                                {!canPlay ? '✕' : isPlaying ? '⏸' : '▶'}
-                              </Text>
+                              <MaterialIcons name={!canPlay ? 'mic-off' : isPlaying ? 'pause' : 'play-arrow'} size={18} color="#fff" />
                             </View>
                             <View style={s.wave}>
                               {[3,7,11,8,13,9,6,12,8,5,10,7,4,9,11,6,8,10,5,7].map((h, i) => (
-                                <View key={i} style={[s.bar, {
-                                  height: h,
-                                  backgroundColor: !canPlay
-                                    ? '#444'
-                                    : isPlaying
-                                    ? GOLD
-                                    : isMe ? 'rgba(255,255,255,0.6)' : 'rgba(255,255,255,0.4)',
-                                }]} />
+                                <View key={i} style={[s.bar, { height: h, backgroundColor: !canPlay ? '#444' : isPlaying ? GOLD : isMe ? 'rgba(255,255,255,0.6)' : 'rgba(255,255,255,0.4)' }]} />
                               ))}
                             </View>
                             <Text style={{ fontSize: 10, color: canPlay ? '#aaa' : '#555', minWidth: 70 }}>
-                              {!canPlay ? 'Expired' : isPlaying ? 'Playing...' : msg.message.replace('🎙 Voice note', '').trim()}
+                              {!canPlay ? 'Expired' : isPlaying ? 'Playing...' : msg.message.replace('Voice note', '').trim()}
                             </Text>
                           </TouchableOpacity>
-
                         ) : isLoc ? (
                           <View>
-                            <Text style={{ fontSize: 13, color: '#90caf9', lineHeight: 20, marginBottom: 8 }}>
-                              {msg.message.split('\n').slice(0, 2).join('\n')}
-                            </Text>
-                            <TouchableOpacity
-                              style={{ backgroundColor: 'rgba(255,255,255,0.1)', borderRadius: 8, padding: 8 }}
-                              onPress={() => {
-                                const url = msg.message.split('\n').find(l => l.startsWith('http'));
-                                if (url) Linking.openURL(url);
-                              }}
-                            >
-                              <Text style={{ fontSize: 12, color: GOLD, fontWeight: '700' }}>
-                                🗺 Open in Google Maps →
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 8 }}>
+                              <MaterialIcons name="location-on" size={16} color="#90caf9" />
+                              <Text style={{ fontSize: 13, color: '#90caf9', flex: 1 }}>
+                                {msg.message.split('\n').slice(0, 2).join('\n')}
                               </Text>
+                            </View>
+                            <TouchableOpacity
+                              style={{ backgroundColor: 'rgba(255,255,255,0.1)', borderRadius: 8, padding: 8, flexDirection: 'row', alignItems: 'center', gap: 6 }}
+                              onPress={() => { const url = msg.message.split('\n').find(l => l.startsWith('http')); if (url) Linking.openURL(url); }}
+                            >
+                              <MaterialIcons name="open-in-new" size={14} color={GOLD} />
+                              <Text style={{ fontSize: 12, color: GOLD, fontWeight: '700' }}>Open in Google Maps</Text>
                             </TouchableOpacity>
                           </View>
                         ) : (
                           <Text style={s.msgTxt}>{msg.message}</Text>
                         )}
-
                         <View style={s.footer}>
                           <Text style={s.time}>{formatTime(msg.timestamp)}</Text>
-                          {isMe && <Text style={{ fontSize: 11, color: '#4caf50' }}>✓✓</Text>}
+                          {isMe && <MaterialIcons name="done-all" size={14} color="#4caf50" />}
                           {(msg.likes || 0) > 0 && (
                             <TouchableOpacity onPress={() => handleLike(id)}>
                               <Text style={{ fontSize: 11, color: '#666' }}>👍 {msg.likes}</Text>
@@ -505,12 +356,11 @@ export default function ChatBoardScreen({ nav, location }) {
                         </View>
                       </View>
                     </View>
-
                     {isMe && (
                       <View style={s.aCol}>
                         {isLast
                           ? <View style={[s.av, { backgroundColor: role === 'police' ? BLUE : RED }]}>
-                              <Text style={s.avTxt}>{role === 'police' ? '🏛' : getInitials(myName)}</Text>
+                              <Text style={s.avTxt}>{role === 'police' ? 'P' : getInitials(myName)}</Text>
                             </View>
                           : <View style={{ width: 34 }} />
                         }
@@ -525,25 +375,22 @@ export default function ChatBoardScreen({ nav, location }) {
 
           {isRecording && (
             <View style={s.recBar}>
-              <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: RED }} />
-              <Text style={{ fontSize: 13, color: RED, fontWeight: '700' }}>
-                🔴 Recording... {recSecs}s — Release 🎙 to send
-              </Text>
+              <MaterialIcons name="fiber-manual-record" size={14} color={RED} />
+              <Text style={{ fontSize: 13, color: RED, fontWeight: '700' }}>Recording... {recSecs}s — Release mic to send</Text>
             </View>
           )}
 
           {role === 'police' && !isRecording && (
-            <View style={{ backgroundColor: '#0d1b4a', paddingHorizontal: 14, paddingVertical: 6, alignItems: 'center' }}>
-              <Text style={{ fontSize: 10, color: '#90caf9', fontWeight: '600' }}>
-                🏛 Posting as Police Officer — marked as official
-              </Text>
+            <View style={{ backgroundColor: '#0d1b4a', paddingHorizontal: 14, paddingVertical: 6, alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 6 }}>
+              <MaterialIcons name="local-police" size={14} color="#90caf9" />
+              <Text style={{ fontSize: 10, color: '#90caf9', fontWeight: '600' }}>Posting as Police Officer — marked as official</Text>
             </View>
           )}
 
           <View style={s.inputBar}>
             <View style={s.inputRow}>
               <TouchableOpacity style={s.iconBtn} onPress={handleShareLocation}>
-                <Text style={{ fontSize: 20 }}>📍</Text>
+                <MaterialIcons name="location-on" size={22} color={BLUE} />
               </TouchableOpacity>
               <TextInput
                 style={s.input}
@@ -560,28 +407,30 @@ export default function ChatBoardScreen({ nav, location }) {
                 onPressOut={stopRecording}
                 activeOpacity={0.8}
               >
-                <Text style={{ fontSize: 20 }}>🎙</Text>
+                <MaterialIcons name="mic" size={22} color={isRecording ? '#fff' : '#aaa'} />
               </TouchableOpacity>
               {input.trim() !== '' && (
                 <TouchableOpacity
                   style={[s.sendBtn, role === 'police' && { backgroundColor: BLUE }]}
                   onPress={handleSend}
                 >
-                  <Text style={{ fontSize: 18, color: '#fff' }}>➤</Text>
+                  <MaterialIcons name="send" size={20} color="#fff" />
                 </TouchableOpacity>
               )}
             </View>
             <Text style={{ fontSize: 9, color: '#444', textAlign: 'center', marginTop: 5 }}>
-              Tap 📍 location · Hold 🎙 voice (permanent) · Type + ➤ text
+              Tap pin for location · Hold mic to record voice · Tap send for text
             </Text>
           </View>
         </View>
-
       ) : (
         <ScrollView style={{ flex: 1, backgroundColor: '#0a0a0a', padding: 14 }}>
-          <View style={{ backgroundColor: BLUE, borderRadius: 14, padding: 16, marginBottom: 14, alignItems: 'center' }}>
-            <Text style={{ fontSize: 15, fontWeight: '800', color: '#fff' }}>🏛 Official Police Safety Guidelines</Text>
-            <Text style={{ fontSize: 11, color: '#90caf9', marginTop: 4 }}>TSN Command · Cameroon</Text>
+          <View style={{ backgroundColor: BLUE, borderRadius: 14, padding: 16, marginBottom: 14, alignItems: 'center', flexDirection: 'row', gap: 10 }}>
+            <MaterialIcons name="security" size={24} color="#fff" />
+            <View>
+              <Text style={{ fontSize: 15, fontWeight: '800', color: '#fff' }}>Official Police Safety Guidelines</Text>
+              <Text style={{ fontSize: 11, color: '#90caf9', marginTop: 2 }}>TSN Command · Cameroon</Text>
+            </View>
           </View>
           {tips.map(tip => (
             <View key={tip.id} style={s.tipCard}>
@@ -593,11 +442,9 @@ export default function ChatBoardScreen({ nav, location }) {
             </View>
           ))}
           {role === 'police' && (
-            <TouchableOpacity
-              style={{ backgroundColor: BLUE, borderRadius: 12, padding: 14, alignItems: 'center', margin: 10 }}
-              onPress={() => setTab('chat')}
-            >
-              <Text style={{ fontSize: 13, fontWeight: '800', color: '#fff' }}>+ Post Safety Tip in Chat</Text>
+            <TouchableOpacity style={{ backgroundColor: BLUE, borderRadius: 12, padding: 14, alignItems: 'center', margin: 10, flexDirection: 'row', justifyContent: 'center', gap: 8 }} onPress={() => setTab('chat')}>
+              <MaterialIcons name="add" size={18} color="#fff" />
+              <Text style={{ fontSize: 13, fontWeight: '800', color: '#fff' }}>Post Safety Tip in Chat</Text>
             </TouchableOpacity>
           )}
           <View style={{ height: 40 }} />
@@ -606,22 +453,18 @@ export default function ChatBoardScreen({ nav, location }) {
 
       <View style={s.nav}>
         {(role === 'driver' ? [
-          { ico: '⊞', lbl: 'DASHBOARD', to: 'driverDashboard' },
-          { ico: '⚠',  lbl: 'ALERTS',   to: 'emergency'       },
-          { ico: '💬', lbl: 'CHAT',      to: 'chatBoard'       },
-          { ico: '👤', lbl: 'PROFILE',   to: 'profileSetup'    },
+          { icon: 'dashboard',  lbl: 'DASHBOARD', to: 'driverDashboard' },
+          { icon: 'warning',    lbl: 'ALERTS',    to: 'emergency'       },
+          { icon: 'chat',       lbl: 'CHAT',       to: 'chatBoard'       },
+          { icon: 'person',     lbl: 'PROFILE',    to: 'profileSetup'    },
         ] : [
-          { ico: '⊞', lbl: 'DASHBOARD', to: 'policeDashboard' },
-          { ico: '🗺',  lbl: 'LIVE MAP', to: 'liveMap'         },
-          { ico: '💬', lbl: 'CHAT',      to: 'chatBoard'       },
-          { ico: '👤', lbl: 'PROFILE',   to: 'profileSetup'    },
-        ]).map(({ ico, lbl, to }) => (
-          <TouchableOpacity
-            key={lbl}
-            style={lbl === 'CHAT' ? s.navActive : s.navItem}
-            onPress={() => nav(to)}
-          >
-            <Text style={lbl === 'CHAT' ? s.navIcoA : s.navIco}>{ico}</Text>
+          { icon: 'dashboard',  lbl: 'DASHBOARD', to: 'policeDashboard' },
+          { icon: 'map',        lbl: 'LIVE MAP',  to: 'liveMap'         },
+          { icon: 'chat',       lbl: 'CHAT',       to: 'chatBoard'       },
+          { icon: 'person',     lbl: 'PROFILE',    to: 'profileSetup'    },
+        ]).map(({ icon, lbl, to }) => (
+          <TouchableOpacity key={lbl} style={lbl === 'CHAT' ? s.navActive : s.navItem} onPress={() => nav(to)}>
+            <MaterialIcons name={icon} size={22} color={lbl === 'CHAT' ? '#fff' : '#555'} />
             <Text style={lbl === 'CHAT' ? s.navTxtA : s.navTxt}>{lbl}</Text>
           </TouchableOpacity>
         ))}
@@ -633,22 +476,21 @@ export default function ChatBoardScreen({ nav, location }) {
 const s = StyleSheet.create({
   safe:      { flex: 1, backgroundColor: '#0a0a0a' },
   header:    { flexDirection: 'row', alignItems: 'center', backgroundColor: '#111', paddingHorizontal: 12, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: '#1c1c1c' },
-  back:      { fontSize: 22, color: RED, fontWeight: '600', marginRight: 10 },
-  hAvatar:   { width: 42, height: 42, borderRadius: 21, backgroundColor: RED, alignItems: 'center', justifyContent: 'center', marginRight: 10 },
+  hAvatar:   { width: 42, height: 42, borderRadius: 21, backgroundColor: RED, alignItems: 'center', justifyContent: 'center', marginHorizontal: 10 },
   hName:     { fontSize: 15, fontWeight: '800', color: '#fff' },
   hSub:      { fontSize: 10, color: '#888', marginTop: 2 },
   tabs:      { flexDirection: 'row', backgroundColor: '#111', paddingHorizontal: 12, paddingBottom: 8, gap: 8 },
-  tab:       { flex: 1, backgroundColor: '#1a1a1a', borderRadius: 10, paddingVertical: 9, alignItems: 'center' },
+  tab:       { flex: 1, backgroundColor: '#1a1a1a', borderRadius: 10, paddingVertical: 9, alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 6 },
   tabOn:     { backgroundColor: RED },
   tabTxt:    { fontSize: 12, fontWeight: '700', color: '#666' },
   tabTxtOn:  { color: '#fff' },
-  errBanner: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#2d0000', padding: 10, paddingHorizontal: 16 },
+  errBanner: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#2d0000', padding: 10, paddingHorizontal: 16, gap: 8 },
   errTxt:    { fontSize: 12, color: '#ff8a80', flex: 1 },
-  retryTxt:  { fontSize: 12, color: GOLD, fontWeight: '700', marginLeft: 10 },
+  retryTxt:  { fontSize: 12, color: GOLD, fontWeight: '700' },
   loadBox:   { flex: 1, alignItems: 'center', justifyContent: 'center' },
   list:      { flex: 1, paddingHorizontal: 6 },
-  notice:    { backgroundColor: '#1a1a1a', margin: 10, borderRadius: 10, padding: 10 },
-  noticeTxt: { fontSize: 11, color: '#666', textAlign: 'center', lineHeight: 16 },
+  notice:    { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#1a1a1a', margin: 10, borderRadius: 10, padding: 10 },
+  noticeTxt: { fontSize: 11, color: '#666', flex: 1 },
   dateSep:   { flexDirection: 'row', alignItems: 'center', marginVertical: 14, paddingHorizontal: 10 },
   dateLine:  { flex: 1, height: 1, backgroundColor: '#1c1c1c' },
   datePill:  { backgroundColor: '#1a1a1a', borderRadius: 12, paddingHorizontal: 12, paddingVertical: 4, marginHorizontal: 10 },
@@ -665,7 +507,7 @@ const s = StyleSheet.create({
   bMe:       { backgroundColor: '#1a3d1a', borderBottomRightRadius: 4 },
   bPolice:   { backgroundColor: '#0d1b4a', borderBottomLeftRadius: 4 },
   bOther:    { backgroundColor: '#1e1e1e', borderBottomLeftRadius: 4 },
-  polBadge:  { backgroundColor: 'rgba(144,202,249,0.15)', borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3, marginBottom: 6, alignSelf: 'flex-start' },
+  polBadge:  { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: 'rgba(144,202,249,0.15)', borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3, marginBottom: 6, alignSelf: 'flex-start' },
   polBadgeTxt: { fontSize: 10, fontWeight: '800', color: '#90caf9' },
   msgTxt:    { fontSize: 14, color: '#f0f0f0', lineHeight: 20 },
   voiceRow:  { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 4, minWidth: 200 },
@@ -685,8 +527,6 @@ const s = StyleSheet.create({
   nav:       { flexDirection: 'row', backgroundColor: '#111', borderTopWidth: 1, borderTopColor: '#1c1c1c', paddingVertical: 10 },
   navActive: { flex: 1, alignItems: 'center', backgroundColor: RED, borderRadius: 12, paddingVertical: 6, marginHorizontal: 4 },
   navItem:   { flex: 1, alignItems: 'center', paddingVertical: 6 },
-  navIcoA:   { fontSize: 18, color: '#fff' },
   navTxtA:   { fontSize: 9, color: '#fff', marginTop: 2, fontWeight: '700' },
-  navIco:    { fontSize: 18, color: '#555' },
   navTxt:    { fontSize: 9, color: '#555', marginTop: 2 },
 });
