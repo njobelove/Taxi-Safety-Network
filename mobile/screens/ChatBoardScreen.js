@@ -7,6 +7,7 @@ import {
 import { MaterialIcons, Ionicons } from '@expo/vector-icons';
 import { Audio } from 'expo-av';
 import { useAuth } from '../services/AuthContext';
+import { audioRecorder } from '../services/AudioRecorder';
 
 const RED   = '#d32f2f';
 const BLUE  = '#1565C0';
@@ -148,39 +149,55 @@ export default function ChatBoardScreen({ nav, location }) {
   };
 
   const startRecording = async () => {
-    try {
-      const { status } = await Audio.requestPermissionsAsync();
-      if (status !== 'granted') { Alert.alert('Permission Required', 'Please allow microphone access.'); return; }
-      await Audio.setAudioModeAsync({ allowsRecordingIOS: true, playsInSilentModeIOS: true });
-      const { recording } = await Audio.Recording.createAsync(Audio.RecordingOptionsPresets.HIGH_QUALITY);
-      recordingRef.current = recording;
-      setIsRecording(true); setRecSecs(0);
+    const started = await audioRecorder.start();
+    if (started) {
+      setIsRecording(true);
+      setRecSecs(0);
       timerRef.current = setInterval(() => setRecSecs(s => s + 1), 1000);
-    } catch (e) { Alert.alert('Error', e.message); }
+    }
   };
 
   const stopRecording = async () => {
-    if (!isRecording || !recordingRef.current) return;
+    if (!isRecording) return;
     clearInterval(timerRef.current);
     const secs = recSecs;
-    setIsRecording(false); setRecSecs(0);
+    setIsRecording(false);
+    setRecSecs(0);
+
+    const base64Uri = await audioRecorder.stop();
+    if (!base64Uri || secs < 1) return;
+
+    const msgId = 'local_' + Date.now();
+    voiceStore.current[msgId] = base64Uri;
+
+    const local = {
+      id: msgId, senderId: myId, senderName: myName,
+      senderType: role || 'driver',
+      message: 'Voice note (' + secs + 's)',
+      type: 'voice', voiceUri: base64Uri,
+      timestamp: new Date().toISOString(), likes: 0,
+    };
+    setMessages(prev => [...prev, local]);
+    setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 100);
+
     try {
-      await recordingRef.current.stopAndUnloadAsync();
-      const blobUri   = recordingRef.current.getURI();
-      if (!blobUri || secs < 1) return;
-      const base64Uri = await blobToBase64(blobUri);
-      const msgId     = 'local_' + Date.now();
-      voiceStore.current[msgId] = base64Uri;
-      const local = { id: msgId, senderId: myId, senderName: myName, senderType: role || 'driver', message: 'Voice note (' + secs + 's)', type: 'voice', voiceUri: base64Uri, timestamp: new Date().toISOString(), likes: 0 };
-      setMessages(prev => [...prev, local]);
-      setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 100);
-      try {
-        const res   = await fetch(BASE_URL + '/api/chat/messages', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ senderId: myId, senderName: myName, senderType: role, message: 'Voice note (' + secs + 's)', type: 'voice', voiceUri: base64Uri }) });
-        const saved = await res.json();
-        voiceStore.current[saved.id || saved._id] = base64Uri;
-        setMessages(prev => prev.map(m => m.id === msgId ? { ...saved, senderName: myName, senderType: role, voiceUri: base64Uri } : m));
-      } catch (e) {}
-    } catch (e) { Alert.alert('Recording Error', e.message); }
+      const res   = await fetch(BASE_URL + '/api/chat/messages', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          senderId: myId, senderName: myName, senderType: role,
+          message: 'Voice note (' + secs + 's)',
+          type: 'voice', voiceUri: base64Uri,
+        }),
+      });
+      const saved = await res.json();
+      voiceStore.current[saved.id || saved._id] = base64Uri;
+      setMessages(prev => prev.map(m =>
+        m.id === msgId ? { ...saved, senderName: myName, senderType: role, voiceUri: base64Uri } : m
+      ));
+    } catch (e) {
+      console.log('Voice send error:', e.message);
+    }
   };
 
   const playVoice = async (msg) => {
