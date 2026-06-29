@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, SafeAreaView, ActivityIndicator, Alert, Linking, ScrollView } from 'react-native';
-import { MaterialIcons, Ionicons } from '@expo/vector-icons';
+import { MaterialIcons, Ionicons, FontAwesome5 } from '../services/Icon';
 import { useAuth } from '../services/AuthContext';
 
 const RED=('#d32f2f'),BLUE=('#1565C0'),GREEN=('#2e7d32'),GOLD=('#f5c518');

@@ -4,7 +4,7 @@ import {
   ScrollView, SafeAreaView, StatusBar,
   Animated, Linking, Alert, RefreshControl,
 } from 'react-native';
-import { MaterialIcons, Ionicons, FontAwesome5 } from '@expo/vector-icons';
+import { MaterialIcons, Ionicons, FontAwesome5 } from '../services/Icon';
 import { getStats, updateDriverLocation, getAllAlerts } from '../services/api';
 import { triggerSOS } from '../services/sosService';
 import { voiceAlertService } from '../services/voiceAlertService';
