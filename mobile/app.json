@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "TSN - Taxi Safety Network",
+    "name": "Taxi Safety Network",
     "slug": "taxi-safety-network",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -9,64 +9,61 @@
     "splash": {
       "image": "./assets/splash.png",
       "resizeMode": "contain",
-      "backgroundColor": "#d32f2f"
+      "backgroundColor": "#ffffff"
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#d32f2f"
+        "backgroundColor": "#ffffff"
       },
-      "package": "com.tsn.taxisafetynetwork",
+      "config": {
+        "googleMaps": {
+          "apiKey": "AIzaSyD8s4b7Y3VTqX2mN9pL6kR1wE5fH0cJ4uQ"
+        }
+      },
       "permissions": [
         "ACCESS_FINE_LOCATION",
         "ACCESS_COARSE_LOCATION",
         "RECORD_AUDIO",
-        "CAMERA",
         "READ_EXTERNAL_STORAGE",
-        "WRITE_EXTERNAL_STORAGE"
+        "WRITE_EXTERNAL_STORAGE",
+        "CAMERA",
+        "CALL_PHONE"
       ]
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.tsn.taxisafetynetwork"
+      "infoPlist": {
+        "NSLocationWhenInUseUsageDescription": "TSN needs location to send accurate emergency alerts.",
+        "NSMicrophoneUsageDescription": "TSN needs microphone to record your voice identity note.",
+        "NSPhotoLibraryUsageDescription": "TSN needs photo library access to update your profile photo.",
+        "NSCameraUsageDescription": "TSN needs camera to take your profile photo."
+      }
     },
     "web": {
       "favicon": "./assets/favicon.png",
-      "bundler": "metro",
-      "name": "TSN - Taxi Safety Network",
-      "shortName": "TSN",
-      "description": "Emergency alert system for taxi drivers in Cameroon",
-      "themeColor": "#d32f2f",
-      "backgroundColor": "#ffffff",
-      "display": "standalone",
-      "orientation": "portrait",
-      "scope": "/",
-      "startUrl": "/"
+      "bundler": "metro"
     },
     "plugins": [
       [
         "expo-location",
         {
-          "locationAlwaysAndWhenInUsePermission": "TSN needs your location to send accurate emergency alerts."
+          "locationAlwaysAndWhenInUsePermission": "TSN needs location for emergency alerts."
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "TSN needs photo library to update your profile picture.",
+          "cameraPermission": "TSN needs camera to take your profile photo."
         }
       ],
       [
         "expo-av",
         {
-          "microphonePermission": "TSN needs microphone access to record your voice identity note."
+          "microphonePermission": "TSN needs microphone to record your voice ID."
         }
       ]
-    ],
-    "extra": {
-      "vectorIcons": {
-        "fontFilesPaths": [
-          "./node_modules/@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/MaterialIcons.ttf",
-          "./node_modules/@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/Ionicons.ttf",
-          "./node_modules/@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/FontAwesome5_Solid.ttf",
-          "./node_modules/@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/FontAwesome5_Regular.ttf",
-          "./node_modules/@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/FontAwesome5_Brands.ttf"
-        ]
-      }
-    }
+    ]
   }
 }

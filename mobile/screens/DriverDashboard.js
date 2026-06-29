@@ -4,7 +4,6 @@ import {
   ScrollView, SafeAreaView, StatusBar,
   Animated, Linking, Alert, RefreshControl,
 } from 'react-native';
-import { MaterialIcons, Ionicons, FontAwesome5 } from '../services/Icon';
 import { getStats, updateDriverLocation, getAllAlerts } from '../services/api';
 import { triggerSOS } from '../services/sosService';
 import { voiceAlertService } from '../services/voiceAlertService';
@@ -28,6 +27,7 @@ export default function DriverDashboard({ nav, location }) {
   const countRef   = useRef(null);
   const pressedRef = useRef(false);
 
+  // ── Pulse animation ────────────────────────────────────────────────────────
   useEffect(() => {
     Animated.loop(
       Animated.sequence([
@@ -37,18 +37,22 @@ export default function DriverDashboard({ nav, location }) {
     ).start();
   }, []);
 
+  // ── Load data on mount ─────────────────────────────────────────────────────
   useEffect(() => {
     loadData();
     const interval = setInterval(loadData, 15000);
     return () => {
       clearInterval(interval);
       clearInterval(countRef.current);
+      // Stop voice when leaving dashboard
       voiceAlertService.stop();
     };
   }, []);
 
+  // ── Start voice alerts when active alerts load ─────────────────────────────
   useEffect(() => {
     if (activeAlerts.length > 0 && !voiceMuted) {
+      // Small delay to ensure audio system ready
       setTimeout(() => {
         voiceAlertService.start(activeAlerts, setPlayingId);
       }, 300);
@@ -58,6 +62,7 @@ export default function DriverDashboard({ nav, location }) {
     }
   }, [activeAlerts]);
 
+  // ── Update GPS ─────────────────────────────────────────────────────────────
   useEffect(() => {
     if (location && user) {
       updateDriverLocation(
@@ -97,6 +102,7 @@ export default function DriverDashboard({ nav, location }) {
     }
   };
 
+  // ── SOS hold 3 seconds ────────────────────────────────────────────────────
   const handlePressIn = () => {
     pressedRef.current = true;
     let count = 3;
@@ -154,24 +160,19 @@ export default function DriverDashboard({ nav, location }) {
     <SafeAreaView style={s.safe}>
       <StatusBar barStyle="dark-content" backgroundColor="#f5f5f5" />
 
-      {/* ── HEADER ── */}
+      {/* Header */}
       <View style={s.topBar}>
         <View style={s.topLeft}>
-          <View style={s.shieldWrap}>
-            <Ionicons name="shield-checkmark" size={22} color="#fff" />
-          </View>
+          <View style={s.shieldWrap}><Text style={s.shieldIco}>🛡</Text></View>
           <View>
             <Text style={s.appName}>TAXI SAFETY NETWORK</Text>
             <Text style={s.appSub}>{user?.badgeId || '—'}  ·  {user?.city || 'Yaoundé'}</Text>
           </View>
         </View>
         <View style={s.topRight}>
+          {/* Voice mute button */}
           <TouchableOpacity style={s.muteBtn} onPress={toggleMute}>
-            <MaterialIcons
-              name={voiceMuted ? 'volume-off' : 'volume-up'}
-              size={22}
-              color={voiceMuted ? '#888' : GREEN}
-            />
+            <Text style={s.muteBtnTxt}>{voiceMuted ? '🔇' : '🔊'}</Text>
           </TouchableOpacity>
           <View style={s.mtnBadge}>
             <Text style={s.mtnTxt}>{user?.network || 'MTN'}</Text>
@@ -179,24 +180,26 @@ export default function DriverDashboard({ nav, location }) {
         </View>
       </View>
 
-      {/* ── VOICE PLAYING BANNER ── */}
+      {/* Voice playing banner */}
       {playingId && !voiceMuted && (
         <View style={s.voiceBanner}>
-          <MaterialIcons name="graphic-eq" size={16} color={GREEN} />
+          <View style={s.voiceDot} />
           <Text style={s.voiceBannerTxt}>
-            Playing voice: {activeAlerts.find(a => (a._id || a.id) === playingId)?.driverName || 'Driver'}
+            🎙 Playing voice note from active alert —
+            {activeAlerts.find(a => (a._id || a.id) === playingId)?.driverName || 'Driver'}
           </Text>
           <TouchableOpacity onPress={toggleMute}>
-            <MaterialIcons name="volume-off" size={16} color="#aaa" />
+            <Text style={s.muteBannerTxt}>🔇 MUTE</Text>
           </TouchableOpacity>
         </View>
       )}
 
-      {/* ── MUTED BANNER ── */}
+      {/* Muted banner */}
       {voiceMuted && activeAlerts.length > 0 && (
         <TouchableOpacity style={s.mutedBanner} onPress={toggleMute}>
-          <MaterialIcons name="volume-off" size={16} color="#888" />
-          <Text style={s.mutedBannerTxt}>Voice alerts muted — Tap to unmute</Text>
+          <Text style={s.mutedBannerTxt}>
+            🔇 Voice alerts muted — Tap to unmute
+          </Text>
         </TouchableOpacity>
       )}
 
@@ -204,16 +207,15 @@ export default function DriverDashboard({ nav, location }) {
         showsVerticalScrollIndicator={false}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={RED} />}
       >
-        {/* ── STATS ── */}
+        {/* Stats */}
         {stats && (
           <View style={s.statsRow}>
             {[
-              [stats.pendingAlerts    || 0, 'ACTIVE\nALERTS',  RED,   'notifications-active', 'MaterialIcons'],
-              [stats.resolvedAlerts   || 0, 'RESOLVED',        GREEN, 'check-circle',          'MaterialIcons'],
-              [stats.registeredDrivers|| 0, 'DRIVERS\nONLINE', BLUE,  'directions-car',        'MaterialIcons'],
-            ].map(([num, lbl, col, icon], i) => (
+              [stats.pendingAlerts    || 0, 'ACTIVE\nALERTS',  RED  ],
+              [stats.resolvedAlerts   || 0, 'RESOLVED',        GREEN],
+              [stats.registeredDrivers|| 0, 'DRIVERS\nONLINE', BLUE ],
+            ].map(([num, lbl, col], i) => (
               <View key={i} style={[s.statMini, { backgroundColor: col }]}>
-                <MaterialIcons name={icon} size={18} color="rgba(255,255,255,0.8)" />
                 <Text style={s.statNum}>{num}</Text>
                 <Text style={s.statLbl}>{lbl}</Text>
               </View>
@@ -221,22 +223,21 @@ export default function DriverDashboard({ nav, location }) {
           </View>
         )}
 
-        {/* ── ACTIVE ALERTS ── */}
+        {/* Active alerts from ALL drivers */}
         {activeAlerts.length > 0 && (
           <View style={s.alertsSection}>
             <View style={s.alertsHeader}>
-              <MaterialIcons name="warning" size={18} color={RED} />
               <Text style={s.alertsTitle}>
-                {activeAlerts.length} ACTIVE ALERT{activeAlerts.length > 1 ? 'S' : ''}
+                🚨 {activeAlerts.length} ACTIVE ALERT{activeAlerts.length > 1 ? 'S' : ''}
               </Text>
-              <TouchableOpacity onPress={loadData} style={s.refreshBtn}>
-                <MaterialIcons name="refresh" size={22} color={RED} />
+              <TouchableOpacity onPress={loadData}>
+                <Text style={s.refreshTxt}>↻ REFRESH</Text>
               </TouchableOpacity>
             </View>
             <Text style={s.alertsSub}>
               {voiceMuted
-                ? 'Voice muted — tap speaker to hear voice notes'
-                : 'Voice notes playing automatically for each alert'}
+                ? '🔇 Voice muted — tap 🔊 to hear voice notes'
+                : '🔊 Voice notes playing automatically for each alert'}
             </Text>
             {activeAlerts.map((alert) => {
               const alertId  = alert._id || alert.id;
@@ -260,8 +261,8 @@ export default function DriverDashboard({ nav, location }) {
                 >
                   {isActive && (
                     <View style={s.playingRow}>
-                      <MaterialIcons name="graphic-eq" size={14} color={GREEN} />
-                      <Text style={s.playingTxt}>PLAYING NOW</Text>
+                      <View style={s.playingDot} />
+                      <Text style={s.playingTxt}>🎙 PLAYING NOW</Text>
                     </View>
                   )}
                   <View style={s.alertMiniRow}>
@@ -270,25 +271,21 @@ export default function DriverDashboard({ nav, location }) {
                       <Text style={s.alertType}>
                         {alert.alertType?.toUpperCase() || 'SOS'}  ·  {alert.driverName || '—'}
                       </Text>
-                      <View style={s.alertLocRow}>
-                        <MaterialIcons name="location-on" size={12} color="#555" />
-                        <Text style={s.alertLocation}>
-                          {alert.location?.address ||
-                            (lat ? parseFloat(lat).toFixed(3) + '° N' : 'No location')}
-                        </Text>
-                      </View>
+                      <Text style={s.alertLocation}>
+                        📍 {alert.location?.address ||
+                          (lat ? parseFloat(lat).toFixed(3) + '° N' : 'No location')}
+                      </Text>
                       <View style={s.alertFooter}>
-                        <MaterialIcons name="access-time" size={11} color="#888" />
                         <Text style={s.alertTime}>
-                          {formatTime(alert.timestamp || alert.createdAt)}
+                          🕐 {formatTime(alert.timestamp || alert.createdAt)}
                         </Text>
                         {hasVoice
-                          ? <><MaterialIcons name="mic" size={11} color={GREEN} /><Text style={s.voiceTag}>Voice</Text></>
-                          : <><MaterialIcons name="mic-off" size={11} color="#aaa" /><Text style={s.noVoiceTag}>No voice</Text></>
+                          ? <Text style={s.voiceTag}>🎙 Voice</Text>
+                          : <Text style={s.noVoiceTag}>No voice</Text>
                         }
                       </View>
                     </View>
-                    <MaterialIcons name="map" size={22} color={BLUE} />
+                    <Text style={{ fontSize: 18 }}>🗺</Text>
                   </View>
                 </TouchableOpacity>
               );
@@ -296,20 +293,19 @@ export default function DriverDashboard({ nav, location }) {
           </View>
         )}
 
-        {/* ── GPS LOCATION ── */}
+        {/* GPS */}
         {location && (
           <View style={s.locationCard}>
             <View style={s.locationTop}>
-              <MaterialIcons name="gps-fixed" size={14} color={GREEN} />
-              <Text style={s.locationTitle}>LIVE LOCATION</Text>
+              <View style={s.livePing} />
+              <Text style={s.locationTitle}>📍 LIVE LOCATION</Text>
               <TouchableOpacity
                 onPress={() => Linking.openURL(
                   'https://www.google.com/maps?q=' + location.latitude + ',' + location.longitude + '&z=16'
                 )}
                 style={s.openMapsBtn}
               >
-                <MaterialIcons name="open-in-new" size={12} color="#fff" />
-                <Text style={s.openMapsTxt}>Open Maps</Text>
+                <Text style={s.openMapsTxt}>Open Maps →</Text>
               </TouchableOpacity>
             </View>
             <Text style={s.coordsTxt}>
@@ -318,15 +314,11 @@ export default function DriverDashboard({ nav, location }) {
           </View>
         )}
 
-        {/* ── PANIC BUTTON ── */}
+        {/* PANIC BUTTON */}
         <View style={s.panicSection}>
           <View style={s.instructBox}>
             <Text style={s.instructTitle}>
-              {sosCountdown
-                ? 'HOLD... ' + sosCountdown
-                : sosSending
-                ? 'SENDING...'
-                : 'PANIC BUTTON'}
+              {sosCountdown ? '🔴 HOLD... ' + sosCountdown : sosSending ? '📡 SENDING...' : '🔴 PANIC BUTTON'}
             </Text>
             <Text style={s.instructSub}>
               {sosCountdown
@@ -350,20 +342,11 @@ export default function DriverDashboard({ nav, location }) {
                 >
                   <View style={{ transform: [{ rotate: '-45deg' }], alignItems: 'center' }}>
                     {sosSending ? (
-                      <>
-                        <MaterialIcons name="wifi-tethering" size={36} color="#fff" />
-                        <Text style={s.panicTxt}>SENDING</Text>
-                      </>
+                      <><Text style={{ fontSize: 28 }}>📡</Text><Text style={s.panicTxt}>SENDING</Text></>
                     ) : sosCountdown ? (
-                      <Text style={[s.panicTxt, { fontSize: 52, fontWeight: '900' }]}>
-                        {sosCountdown}
-                      </Text>
+                      <Text style={[s.panicTxt, { fontSize: 52, fontWeight: '900' }]}>{sosCountdown}</Text>
                     ) : (
-                      <>
-                        <MaterialIcons name="sos" size={40} color="#fff" />
-                        <Text style={s.panicTxt}>PANIC</Text>
-                        <Text style={s.panicTxt}>SOS</Text>
-                      </>
+                      <><Text style={{ fontSize: 32 }}>🚨</Text><Text style={s.panicTxt}>PANIC</Text><Text style={s.panicTxt}>SOS</Text></>
                     )}
                   </View>
                 </TouchableOpacity>
@@ -372,60 +355,54 @@ export default function DriverDashboard({ nav, location }) {
           </View>
 
           <View style={[s.voiceStatus, { backgroundColor: voiceUri ? '#0a1f0a' : '#1a1a1a' }]}>
-            <MaterialIcons
-              name={voiceUri ? 'mic' : 'mic-off'}
-              size={16}
-              color={voiceUri ? GREEN : '#555'}
-            />
             <Text style={[s.voiceStatusTxt, { color: voiceUri ? GREEN : '#555' }]}>
               {voiceUri
-                ? 'Voice note ready — will broadcast on SOS'
-                : 'No voice note — add one in Profile'}
+                ? '🎙 Voice note ready — will broadcast on SOS'
+                : '🎙 No voice note — add one in Profile'}
             </Text>
           </View>
         </View>
 
-        {/* ── QUICK TILES ── */}
+        {/* Quick tiles */}
         <View style={s.tilesCard}>
           <View style={s.tilesRow}>
             <TouchableOpacity style={s.tile} onPress={() => {
               if (location) {
-                Alert.alert('Share Location',
-                  location.latitude.toFixed(5) + '° N\n' + location.longitude.toFixed(5) + '° E',
+                Alert.alert('Share Location', location.latitude.toFixed(5) + '° N\n' + location.longitude.toFixed(5) + '° E',
                   [
-                    { text: 'Open Maps', onPress: () => Linking.openURL('https://maps.google.com?q=' + location.latitude + ',' + location.longitude) },
+                    { text: '🗺 Open Maps', onPress: () => Linking.openURL('https://maps.google.com?q=' + location.latitude + ',' + location.longitude) },
                     { text: 'Cancel', style: 'cancel' },
                   ]
                 );
               }
             }}>
-              <MaterialIcons name="location-on" size={28} color={BLUE} />
+              <Text style={s.tileIco}>📍</Text>
               <Text style={s.tileTxt}>SHARE{'\n'}LOCATION</Text>
             </TouchableOpacity>
             <View style={s.tileDivV} />
             <TouchableOpacity style={s.tile} onPress={() => {
               Alert.alert('Emergency Services', 'Select:',
                 [
-                  { text: 'Police: 117',   onPress: () => Linking.openURL('tel:117') },
-                  { text: 'Fire: 118',     onPress: () => Linking.openURL('tel:118') },
-                  { text: 'Ambulance: 15', onPress: () => Linking.openURL('tel:15')  },
+                  { text: '👮 Police: 117',   onPress: () => Linking.openURL('tel:117') },
+                  { text: '🚒 Fire: 118',     onPress: () => Linking.openURL('tel:118') },
+                  { text: '🚑 Ambulance: 15', onPress: () => Linking.openURL('tel:15')  },
                   { text: 'Cancel', style: 'cancel' },
                 ]
               );
             }}>
-              <MaterialIcons name="local-phone" size={28} color={RED} />
+              <Text style={s.tileIco}>📞</Text>
               <Text style={s.tileTxt}>EMERGENCY{'\n'}CONTACTS</Text>
             </TouchableOpacity>
           </View>
           <View style={s.tileDivH} />
           <View style={s.tilesRow}>
             <TouchableOpacity style={s.tile} onPress={() => nav('liveMap')}>
-              <MaterialIcons name="map" size={28} color={GREEN} />
+              <Text style={s.tileIco}>🗺</Text>
               <Text style={s.tileTxt}>LIVE{'\n'}MAP</Text>
             </TouchableOpacity>
             <View style={s.tileDivV} />
             <TouchableOpacity style={s.tile} onPress={() => nav('chatBoard')}>
-              <MaterialIcons name="chat" size={28} color="#8B4513" />
+              <Text style={s.tileIco}>💬</Text>
               <Text style={s.tileTxt}>COMMUNITY{'\n'}CHAT</Text>
             </TouchableOpacity>
           </View>
@@ -434,19 +411,19 @@ export default function DriverDashboard({ nav, location }) {
         <View style={{ height: 20 }} />
       </ScrollView>
 
-      {/* ── BOTTOM NAV ── */}
+      {/* Bottom nav */}
       <View style={s.bottomNav}>
         <View style={s.navActive}>
-          <MaterialIcons name="dashboard" size={22} color="#fff" />
+          <Text style={s.navIcoA}>⊞</Text>
           <Text style={s.navTxtA}>DASHBOARD</Text>
         </View>
         {[
-          { icon: 'warning',  lbl: 'ALERTS',  to: 'emergency'    },
-          { icon: 'chat',     lbl: 'CHAT',     to: 'chatBoard'    },
-          { icon: 'person',   lbl: 'PROFILE',  to: 'profileSetup' },
-        ].map(({ icon, lbl, to }) => (
+          { ico: '⚠',  lbl: 'ALERTS',  to: 'emergency'    },
+          { ico: '💬', lbl: 'CHAT',     to: 'chatBoard'    },
+          { ico: '👤', lbl: 'PROFILE',  to: 'profileSetup' },
+        ].map(({ ico, lbl, to }) => (
           <TouchableOpacity key={lbl} style={s.navItem} onPress={() => nav(to)}>
-            <MaterialIcons name={icon} size={22} color="#aaa" />
+            <Text style={s.navIco}>{ico}</Text>
             <Text style={s.navTxt}>{lbl}</Text>
           </TouchableOpacity>
         ))}
@@ -459,43 +436,48 @@ const s = StyleSheet.create({
   safe:            { flex: 1, backgroundColor: '#f5f5f5' },
   topBar:          { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12, backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#eee' },
   topLeft:         { flexDirection: 'row', alignItems: 'center' },
-  shieldWrap:      { width: 40, height: 40, borderRadius: 12, backgroundColor: RED, alignItems: 'center', justifyContent: 'center', marginRight: 10 },
+  shieldWrap:      { width: 38, height: 38, borderRadius: 10, backgroundColor: RED, alignItems: 'center', justifyContent: 'center', marginRight: 10 },
+  shieldIco:       { fontSize: 20, color: '#fff' },
   appName:         { fontSize: 12, fontWeight: '900', color: '#111' },
   appSub:          { fontSize: 10, color: '#888', marginTop: 1 },
   topRight:        { flexDirection: 'row', alignItems: 'center', gap: 8 },
   muteBtn:         { width: 36, height: 36, borderRadius: 18, backgroundColor: '#f0f0f0', alignItems: 'center', justifyContent: 'center' },
+  muteBtnTxt:      { fontSize: 18 },
   mtnBadge:        { backgroundColor: GOLD, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 4 },
   mtnTxt:          { fontSize: 12, fontWeight: '900', color: '#111' },
   voiceBanner:     { flexDirection: 'row', alignItems: 'center', backgroundColor: '#0a1f0a', paddingHorizontal: 14, paddingVertical: 10, gap: 8 },
+  voiceDot:        { width: 10, height: 10, borderRadius: 5, backgroundColor: GREEN },
   voiceBannerTxt:  { flex: 1, fontSize: 11, fontWeight: '700', color: '#4caf50' },
-  mutedBanner:     { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: '#1a1a1a', paddingHorizontal: 14, paddingVertical: 8, gap: 6 },
+  muteBannerTxt:   { fontSize: 11, color: '#aaa', fontWeight: '600' },
+  mutedBanner:     { backgroundColor: '#1a1a1a', paddingHorizontal: 14, paddingVertical: 8, alignItems: 'center' },
   mutedBannerTxt:  { fontSize: 12, color: '#888', fontWeight: '600' },
   statsRow:        { flexDirection: 'row', padding: 14, gap: 8 },
-  statMini:        { flex: 1, borderRadius: 12, padding: 12, alignItems: 'center', gap: 2 },
+  statMini:        { flex: 1, borderRadius: 12, padding: 12, alignItems: 'center' },
   statNum:         { fontSize: 22, fontWeight: '900', color: '#fff' },
-  statLbl:         { fontSize: 8.5, color: 'rgba(255,255,255,0.85)', textAlign: 'center', marginTop: 2, fontWeight: '600' },
+  statLbl:         { fontSize: 8.5, color: 'rgba(255,255,255,0.85)', textAlign: 'center', marginTop: 3, fontWeight: '600' },
   alertsSection:   { marginHorizontal: 14, marginBottom: 12, backgroundColor: '#fff', borderRadius: 16, padding: 14, borderWidth: 1.5, borderColor: RED },
-  alertsHeader:    { flexDirection: 'row', alignItems: 'center', marginBottom: 4, gap: 6 },
-  alertsTitle:     { fontSize: 13, fontWeight: '900', color: RED, flex: 1 },
-  refreshBtn:      { padding: 4 },
+  alertsHeader:    { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 },
+  alertsTitle:     { fontSize: 13, fontWeight: '900', color: RED },
+  refreshTxt:      { fontSize: 18, color: RED, fontWeight: '700' },
   alertsSub:       { fontSize: 10, color: '#888', marginBottom: 10 },
   alertMini:       { borderRadius: 10, backgroundColor: '#f9f9f9', padding: 10, marginBottom: 6, borderLeftWidth: 3 },
   alertMiniPlaying:{ borderWidth: 1.5, borderColor: GREEN, backgroundColor: '#f0fff0' },
-  playingRow:      { flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 6 },
+  playingRow:      { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 6 },
+  playingDot:      { width: 8, height: 8, borderRadius: 4, backgroundColor: GREEN },
   playingTxt:      { fontSize: 11, fontWeight: '800', color: GREEN },
   alertMiniRow:    { flexDirection: 'row', alignItems: 'center', gap: 8 },
   alertDot:        { width: 8, height: 8, borderRadius: 4 },
-  alertType:       { fontSize: 12, fontWeight: '800', color: '#111', marginBottom: 4 },
-  alertLocRow:     { flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 4 },
-  alertLocation:   { fontSize: 11, color: '#555', flex: 1 },
-  alertFooter:     { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  alertType:       { fontSize: 12, fontWeight: '800', color: '#111', marginBottom: 2 },
+  alertLocation:   { fontSize: 11, color: '#555', marginBottom: 2 },
+  alertFooter:     { flexDirection: 'row', alignItems: 'center', gap: 10 },
   alertTime:       { fontSize: 10, color: '#888' },
   voiceTag:        { fontSize: 10, color: GREEN, fontWeight: '700' },
   noVoiceTag:      { fontSize: 10, color: '#aaa' },
   locationCard:    { marginHorizontal: 14, marginBottom: 12, backgroundColor: '#1a2e1a', borderRadius: 14, padding: 14 },
-  locationTop:     { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 6 },
+  locationTop:     { flexDirection: 'row', alignItems: 'center', marginBottom: 6 },
+  livePing:        { width: 8, height: 8, borderRadius: 4, backgroundColor: GREEN, marginRight: 8 },
   locationTitle:   { fontSize: 12, fontWeight: '800', color: GREEN, flex: 1 },
-  openMapsBtn:     { backgroundColor: BLUE, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 5, flexDirection: 'row', alignItems: 'center', gap: 4 },
+  openMapsBtn:     { backgroundColor: BLUE, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 5 },
   openMapsTxt:     { fontSize: 10, fontWeight: '700', color: '#fff' },
   coordsTxt:       { fontSize: 13, fontWeight: '900', color: '#fff', fontFamily: 'monospace' },
   panicSection:    { alignItems: 'center', marginVertical: 12, paddingHorizontal: 16 },
@@ -507,17 +489,20 @@ const s = StyleSheet.create({
   diamondInner:    { width: 165, height: 165, backgroundColor: 'rgba(255,255,255,0.15)', borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
   panicBtn:        { width: 148, height: 148, backgroundColor: RED, borderRadius: 8, alignItems: 'center', justifyContent: 'center', elevation: 10 },
   panicTxt:        { color: '#fff', fontSize: 18, fontWeight: '900', lineHeight: 22 },
-  voiceStatus:     { width: '100%', borderRadius: 10, padding: 10, flexDirection: 'row', alignItems: 'center', gap: 8 },
-  voiceStatusTxt:  { fontSize: 12, fontWeight: '600', flex: 1 },
+  voiceStatus:     { width: '100%', borderRadius: 10, padding: 10, alignItems: 'center' },
+  voiceStatusTxt:  { fontSize: 12, fontWeight: '600' },
   tilesCard:       { marginHorizontal: 14, backgroundColor: '#fff', borderRadius: 16, overflow: 'hidden', marginBottom: 12, elevation: 2 },
   tilesRow:        { flexDirection: 'row' },
-  tile:            { flex: 1, padding: 16, alignItems: 'center', gap: 6 },
+  tile:            { flex: 1, padding: 16, alignItems: 'center' },
+  tileIco:         { fontSize: 24, marginBottom: 6 },
   tileTxt:         { fontSize: 11, fontWeight: '800', color: '#111', textAlign: 'center', lineHeight: 16 },
   tileDivV:        { width: 1, backgroundColor: '#eee', marginVertical: 10 },
   tileDivH:        { height: 1, backgroundColor: '#eee' },
   bottomNav:       { flexDirection: 'row', backgroundColor: '#fff', borderTopWidth: 1, borderTopColor: '#eee', paddingVertical: 8 },
   navActive:       { flex: 1, alignItems: 'center', backgroundColor: RED, borderRadius: 12, paddingVertical: 6, marginHorizontal: 4 },
   navItem:         { flex: 1, alignItems: 'center', paddingVertical: 6 },
+  navIcoA:         { fontSize: 18, color: '#fff' },
   navTxtA:         { fontSize: 9, color: '#fff', marginTop: 2, fontWeight: '700' },
+  navIco:          { fontSize: 18, color: '#aaa' },
   navTxt:          { fontSize: 9, color: '#aaa', marginTop: 2 },
 });
