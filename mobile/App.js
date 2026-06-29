@@ -1,8 +1,7 @@
 import React, { useEffect, useState } from 'react';
-import { View, ActivityIndicator } from 'react-native';
+import { View, ActivityIndicator, Text } from 'react-native';
 import * as Location from 'expo-location';
 import * as Font from 'expo-font';
-import { MaterialIcons, Ionicons, FontAwesome5 } from '@expo/vector-icons';
 import { AuthProvider, useAuth } from './services/AuthContext';
 
 import LoginScreen         from './screens/LoginScreen';
@@ -26,17 +25,27 @@ function Navigator() {
   const [location,    setLocation]    = useState(null);
   const [fontsLoaded, setFontsLoaded] = useState(false);
 
-  // ── Load icon fonts ────────────────────────────────────────────────────────
+  // ── Load icon fonts before rendering anything ──────────────────────────────
   useEffect(() => {
     async function loadFonts() {
       try {
         await Font.loadAsync({
-          ...MaterialIcons.font,
-          ...Ionicons.font,
-          ...FontAwesome5.font,
+          'MaterialIcons': require('@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/MaterialIcons.ttf'),
+          'Ionicons':      require('@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/Ionicons.ttf'),
+          'FontAwesome5_Solid':   require('@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/FontAwesome5_Pro_Solid.ttf'),
+          'FontAwesome5_Regular': require('@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/FontAwesome5_Pro_Regular.ttf'),
+          'FontAwesome5_Brands':  require('@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/FontAwesome5_Pro_Brands.ttf'),
         });
       } catch (e) {
-        console.log('Font load error:', e.message);
+        // Try simpler approach
+        try {
+          await Font.loadAsync({
+            'MaterialIcons': require('@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/MaterialIcons.ttf'),
+            'Ionicons':      require('@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/Ionicons.ttf'),
+          });
+        } catch (e2) {
+          console.log('Font load error:', e2.message);
+        }
       } finally {
         setFontsLoaded(true);
       }
@@ -78,14 +87,14 @@ function Navigator() {
     return () => { if (subscription) subscription.remove(); };
   }, []);
 
-  // ── Show spinner while fonts or auth loading ───────────────────────────────
   if (loading || !fontsLoaded) {
     return (
       <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#d32f2f' }}>
+        <Text style={{ fontSize: 48, marginBottom: 16 }}>🛡</Text>
         <ActivityIndicator size="large" color="#fff" />
-        <View style={{ marginTop: 20 }}>
-          <MaterialIcons name="shield" size={48} color="#fff" />
-        </View>
+        <Text style={{ color: '#fff', marginTop: 16, fontWeight: '700', fontSize: 16 }}>
+          TSN Loading...
+        </Text>
       </View>
     );
   }
