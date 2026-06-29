@@ -1,6 +1,0 @@
-{
-  "buildCommand": "cd mobile && npm install && npx expo export --platform web && node postbuild.js",
-  "outputDirectory": "mobile/dist",
-  "installCommand": "npm install",
-  "framework": null
-}
