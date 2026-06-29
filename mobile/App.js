@@ -1,7 +1,17 @@
 import React, { useEffect, useState } from 'react';
-import { View, ActivityIndicator } from 'react-native';
+import { View, ActivityIndicator, Text } from 'react-native';
 import * as Location from 'expo-location';
+import * as Font from 'expo-font';
 import { AuthProvider, useAuth } from './services/AuthContext';
+
+// Import font files directly — this forces Expo to include them in the export
+const MaterialIconsFont       = require('./node_modules/@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/MaterialIcons.ttf');
+const IoniconsFont            = require('./node_modules/@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/Ionicons.ttf');
+const FontAwesome5SolidFont   = require('./node_modules/@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/FontAwesome5_Solid.ttf');
+const FontAwesome5RegularFont = require('./node_modules/@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/FontAwesome5_Regular.ttf');
+const FontAwesome5BrandsFont  = require('./node_modules/@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/FontAwesome5_Brands.ttf');
+const AntDesignFont           = require('./node_modules/@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/AntDesign.ttf');
+const FeatherFont             = require('./node_modules/@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/Feather.ttf');
 
 import LoginScreen         from './screens/LoginScreen';
 import SignupScreen        from './screens/SignupScreen';
@@ -20,18 +30,35 @@ import SettingsScreen      from './screens/SettingsScreen';
 
 function Navigator() {
   const { user, role, loading } = useAuth();
-  const [screen,   setScreen]   = useState('login');
-  const [location, setLocation] = useState(null);
+  const [screen,      setScreen]      = useState('login');
+  const [location,    setLocation]    = useState(null);
+  const [fontsLoaded, setFontsLoaded] = useState(false);
+
+  useEffect(() => {
+    Font.loadAsync({
+      MaterialIcons:          MaterialIconsFont,
+      Ionicons:               IoniconsFont,
+      FontAwesome5_Solid:     FontAwesome5SolidFont,
+      FontAwesome5_Regular:   FontAwesome5RegularFont,
+      FontAwesome5_Brands:    FontAwesome5BrandsFont,
+      AntDesign:              AntDesignFont,
+      Feather:                FeatherFont,
+    })
+    .then(() => {
+      console.log('Fonts loaded successfully');
+      setFontsLoaded(true);
+    })
+    .catch(e => {
+      console.log('Font error:', e.message);
+      setFontsLoaded(true);
+    });
+  }, []);
 
   useEffect(() => {
     if (loading) return;
-    if (user && role === 'driver') {
-      setScreen('driverDashboard');
-    } else if (user && role === 'police') {
-      setScreen('policeDashboard');
-    } else {
-      setScreen('login');
-    }
+    if (user && role === 'driver')      setScreen('driverDashboard');
+    else if (user && role === 'police') setScreen('policeDashboard');
+    else                                setScreen('login');
   }, [user, role, loading]);
 
   useEffect(() => {
@@ -40,25 +67,25 @@ function Navigator() {
       try {
         const { status } = await Location.requestForegroundPermissionsAsync();
         if (status !== 'granted') return;
-        const pos = await Location.getCurrentPositionAsync({
-          accuracy: Location.Accuracy.Balanced,
-        });
+        const pos = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
         setLocation(pos.coords);
         subscription = await Location.watchPositionAsync(
           { accuracy: Location.Accuracy.High, timeInterval: 3000, distanceInterval: 5 },
           (p) => setLocation(p.coords)
         );
-      } catch (e) {
-        console.log('Location error:', e.message);
-      }
+      } catch (e) { console.log('Location error:', e.message); }
     })();
     return () => { if (subscription) subscription.remove(); };
   }, []);
 
-  if (loading) {
+  if (loading || !fontsLoaded) {
     return (
-      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#f5f5f5' }}>
-        <ActivityIndicator size="large" color="#d32f2f" />
+      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#d32f2f' }}>
+        <Text style={{ fontSize: 48, marginBottom: 20 }}>🛡</Text>
+        <ActivityIndicator size="large" color="#fff" />
+        <Text style={{ color: '#fff', marginTop: 16, fontWeight: '700', fontSize: 14 }}>
+          TAXI SAFETY NETWORK
+        </Text>
       </View>
     );
   }
