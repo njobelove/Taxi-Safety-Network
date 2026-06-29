@@ -1,6 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { View, ActivityIndicator, Text } from 'react-native';
 import * as Location from 'expo-location';
+import * as Font from 'expo-font';
+import { MaterialIcons } from '@expo/vector-icons';
 import { AuthProvider, useAuth } from './services/AuthContext';
 
 import LoginScreen         from './screens/LoginScreen';
@@ -20,8 +22,30 @@ import SettingsScreen      from './screens/SettingsScreen';
 
 function Navigator() {
   const { user, role, loading } = useAuth();
-  const [screen,   setScreen]   = useState('login');
-  const [location, setLocation] = useState(null);
+  const [screen,      setScreen]      = useState('login');
+  const [location,    setLocation]    = useState(null);
+  const [fontsLoaded, setFontsLoaded] = useState(false);
+
+  useEffect(() => {
+    async function prepare() {
+      try {
+        await Font.loadAsync({
+          ...MaterialIcons.font,
+          // Load each font file directly from node_modules
+          'MaterialIcons': require('./node_modules/@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/MaterialIcons.ttf'),
+          'Ionicons':      require('./node_modules/@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/Ionicons.ttf'),
+          'FontAwesome5_Solid':   require('./node_modules/@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/FontAwesome5_Solid.ttf'),
+          'FontAwesome5_Regular': require('./node_modules/@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/FontAwesome5_Regular.ttf'),
+          'FontAwesome5_Brands':  require('./node_modules/@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/FontAwesome5_Brands.ttf'),
+        });
+      } catch (e) {
+        console.warn('Font loading error:', e);
+      } finally {
+        setFontsLoaded(true);
+      }
+    }
+    prepare();
+  }, []);
 
   useEffect(() => {
     if (loading) return;
@@ -47,7 +71,7 @@ function Navigator() {
     return () => { if (subscription) subscription.remove(); };
   }, []);
 
-  if (loading) {
+  if (loading || !fontsLoaded) {
     return (
       <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#d32f2f' }}>
         <Text style={{ fontSize: 48, marginBottom: 20 }}>🛡</Text>

@@ -16,39 +16,26 @@
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#d32f2f"
       },
-      "config": {
-        "googleMaps": {
-          "apiKey": "AIzaSyD8s4b7Y3VTqX2mN9pL6kR1wE5fH0cJ4uQ"
-        }
-      },
+      "package": "com.tsn.taxisafetynetwork",
       "permissions": [
         "ACCESS_FINE_LOCATION",
         "ACCESS_COARSE_LOCATION",
         "RECORD_AUDIO",
-        "READ_EXTERNAL_STORAGE",
-        "WRITE_EXTERNAL_STORAGE",
         "CAMERA",
-        "CALL_PHONE",
-        "SEND_SMS"
-      ],
-      "package": "com.tsn.taxisafetynetwork"
+        "READ_EXTERNAL_STORAGE",
+        "WRITE_EXTERNAL_STORAGE"
+      ]
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.tsn.taxisafetynetwork",
-      "infoPlist": {
-        "NSLocationWhenInUseUsageDescription": "TSN needs location to send accurate emergency alerts.",
-        "NSMicrophoneUsageDescription": "TSN needs microphone to record your voice identity note.",
-        "NSPhotoLibraryUsageDescription": "TSN needs photo library access to update your profile photo.",
-        "NSCameraUsageDescription": "TSN needs camera to take your profile photo."
-      }
+      "bundleIdentifier": "com.tsn.taxisafetynetwork"
     },
     "web": {
       "favicon": "./assets/favicon.png",
       "bundler": "metro",
       "name": "TSN - Taxi Safety Network",
       "shortName": "TSN",
-      "description": "Taxi Safety Network - Emergency alert system for taxi drivers in Cameroon",
+      "description": "Emergency alert system for taxi drivers in Cameroon",
       "themeColor": "#d32f2f",
       "backgroundColor": "#ffffff",
       "display": "standalone",
@@ -60,15 +47,26 @@
       [
         "expo-location",
         {
-          "locationAlwaysAndWhenInUsePermission": "TSN needs location for emergency alerts."
+          "locationAlwaysAndWhenInUsePermission": "TSN needs your location to send accurate emergency alerts."
         }
       ],
       [
         "expo-av",
         {
-          "microphonePermission": "TSN needs microphone to record your voice ID."
+          "microphonePermission": "TSN needs microphone access to record your voice identity note."
         }
       ]
-    ]
+    ],
+    "extra": {
+      "vectorIcons": {
+        "fontFilesPaths": [
+          "./node_modules/@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/MaterialIcons.ttf",
+          "./node_modules/@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/Ionicons.ttf",
+          "./node_modules/@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/FontAwesome5_Solid.ttf",
+          "./node_modules/@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/FontAwesome5_Regular.ttf",
+          "./node_modules/@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/FontAwesome5_Brands.ttf"
+        ]
+      }
+    }
   }
 }
