@@ -1,166 +1,150 @@
-/**
- * TSN SOS Service
- * Handles ALL emergency triggering:
- * - Sends alert to backend
- * - Plays driver voice note
- * - Sends SMS to all registered police stations
- * - Makes emergency calls
- * - Works OFFLINE via SMS/Call fallback
- *
- * This same function is called by:
- * - Hardware button (3-second hold)
- * - App panic button (3-second hold)
- */
-
-import { Linking, Vibration, Alert } from 'react-native';
+import { Vibration, Alert, Linking, Platform } from 'react-native';
 import { Audio } from 'expo-av';
-import { createSOSAlert, getPoliceContacts } from './api';
 
-let soundObj = null;
+const BASE_URL = typeof window !== 'undefined' && window.location.hostname !== 'localhost'
+  ? 'https://tsn-backend-53yj.onrender.com'
+  : 'http://localhost:8000';
 
-// ── Play driver voice note ────────────────────────────────────────────────────
-export const playDriverVoice = async (voiceUri) => {
-  if (!voiceUri) return;
-  try {
-    if (soundObj) {
-      try { await soundObj.unloadAsync(); } catch (e) {}
-    }
-    await Audio.setAudioModeAsync({
-      playsInSilentModeIOS: true,
-      allowsRecordingIOS: false,
-    });
-    const { sound } = await Audio.Sound.createAsync(
-      { uri: voiceUri },
-      { shouldPlay: true, volume: 1.0 }
-    );
-    soundObj = sound;
-    sound.setOnPlaybackStatusUpdate(status => {
-      if (status.didJustFinish) {
-        sound.unloadAsync();
-        soundObj = null;
-      }
-    });
-  } catch (e) {
-    console.log('Voice play error:', e.message);
-  }
+// Police emergency numbers in Cameroon for offline SMS
+const POLICE_NUMBERS = ['117', '222231234', '222234567', '+237222231234'];
+
+const buildSMSMessage = (user, location) => {
+  const lat = location?.latitude?.toFixed(5) || 'unknown';
+  const lng = location?.longitude?.toFixed(5) || 'unknown';
+  const mapsLink = location ? `https://maps.google.com?q=${lat},${lng}` : '';
+  return `URGENT SOS ALERT - TSN\n` +
+    `Driver: ${user?.fullName || 'Unknown'}\n` +
+    `Badge: ${user?.badgeId || 'Unknown'}\n` +
+    `Plate: ${user?.vehiclePlate || 'Unknown'}\n` +
+    `Phone: ${user?.phoneNumber || 'Unknown'}\n` +
+    `Location: ${lat}°N ${lng}°E\n` +
+    `Map: ${mapsLink}\n` +
+    `NEEDS IMMEDIATE HELP!`;
 };
 
-// ── Main SOS trigger function ─────────────────────────────────────────────────
-export const triggerSOS = async ({ user, location, voiceUri, token, nav }) => {
+const playVoice = async (voiceUri) => {
+  if (!voiceUri || voiceUri.startsWith('blob:')) return;
+  try {
+    await Audio.setAudioModeAsync({ playsInSilentModeIOS: true, allowsRecordingIOS: false });
+    const { sound } = await Audio.Sound.createAsync(
+      { uri: voiceUri }, { shouldPlay: true, volume: 1.0 }
+    );
+    sound.setOnPlaybackStatusUpdate(s => {
+      if (s.didJustFinish) sound.unloadAsync();
+    });
+  } catch (e) { console.log('Voice playback error:', e.message); }
+};
 
-  // ── 1. Vibrate hard ───────────────────────────────────────────────────────
-  Vibration.vibrate([0, 500, 100, 500, 100, 1000]);
+export const triggerSOS = async ({ user, location, voiceUri, token, nav, alertType = 'sos' }) => {
+  // 1. Vibrate immediately
+  Vibration.vibrate([0, 500, 200, 500, 200, 1000]);
 
-  // ── 2. Play voice note immediately ────────────────────────────────────────
+  // 2. Play own voice note immediately
   if (voiceUri) {
-    playDriverVoice(voiceUri);
+    playVoice(voiceUri);
   }
 
-  // ── 3. Build alert data ───────────────────────────────────────────────────
-  const lat        = location?.latitude?.toFixed(5)  || '3.84800';
-  const lng        = location?.longitude?.toFixed(5) || '11.50210';
-  const mapsLink   = `https://maps.google.com?q=${lat},${lng}`;
-  const driverName = user?.fullName      || 'Unknown Driver';
-  const badgeId    = user?.badgeId       || 'UNKNOWN';
-  const plate      = user?.vehiclePlate  || 'UNKNOWN';
-  const network    = user?.network       || 'MTN';
-  const phone      = user?.phoneNumber   || '';
-
+  // 3. Build alert data
   const alertData = {
-    driverId:      badgeId,
-    driverName,
-    phoneNumber:   phone,
-    network,
-    vehiclePlate:  plate,
-    alertType:     'sos',
-    location: {
-      lat:     parseFloat(lat),
-      lng:     parseFloat(lng),
-      address: `${lat}° N, ${lng}° E`,
-    },
-    triggerMethod: 'hardware_button',
-    hasVoiceNote:  !!voiceUri,
-    timestamp:     new Date().toISOString(),
+    driverId:      user?.badgeId   || 'UNKNOWN',
+    driverName:    user?.fullName  || 'Unknown Driver',
+    phoneNumber:   user?.phoneNumber,
+    network:       user?.network,
+    vehiclePlate:  user?.vehiclePlate,
+    alertType,
+    triggerMethod: 'panic_button',
+    hasVoiceNote:  !!voiceUri && !voiceUri.startsWith('blob:'),
+    location: location ? {
+      lat:     location.latitude,
+      lng:     location.longitude,
+      address: `${location.latitude.toFixed(4)}°N, ${location.longitude.toFixed(4)}°E`,
+    } : { lat: null, lng: null, address: 'Location not available' },
   };
 
-  // ── SMS body for offline fallback ─────────────────────────────────────────
-  const smsText =
-    `🚨 TSN EMERGENCY SOS 🚨\n` +
-    `Driver: ${driverName}\n` +
-    `Badge:  ${badgeId}\n` +
-    `Plate:  ${plate}\n` +
-    `GPS:    ${lat}° N, ${lng}° E\n` +
-    `Maps:   ${mapsLink}\n` +
-    `Tel:    ${phone}\n` +
-    `Time:   ${new Date().toLocaleTimeString()}\n` +
-    `Network: ${network}\n\n` +
-    `RESPOND IMMEDIATELY — DRIVER NEEDS HELP`;
-
-  const smsEncoded = encodeURIComponent(smsText);
-
-  // ── 4. Try online: send to backend ───────────────────────────────────────
-  let onlineSuccess = false;
+  // 4. Try to send to backend (online)
+  let sentOnline = false;
   try {
-    await createSOSAlert(alertData, token);
-    onlineSuccess = true;
-    console.log('✅ SOS sent to backend successfully');
-  } catch (e) {
-    console.log('❌ Backend offline — using SMS/Call fallback');
-  }
-
-  // ── 5. Get registered police contacts ────────────────────────────────────
-  let policeNumbers = ['+237222221234']; // default fallback
-  try {
-    const data = await getPoliceContacts();
-    if (data.stations && data.stations.length > 0) {
-      policeNumbers = data.stations
-        .filter(s => s.emergencyLine)
-        .map(s => s.emergencyLine);
+    const controller = new AbortController();
+    const timeout    = setTimeout(() => controller.abort(), 8000);
+    const res = await fetch(BASE_URL + '/api/alerts/sos', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + (token || '') },
+      body:    JSON.stringify(alertData),
+      signal:  controller.signal,
+    });
+    clearTimeout(timeout);
+    if (res.ok) {
+      sentOnline = true;
+      console.log('✅ SOS sent online');
     }
   } catch (e) {
-    console.log('Could not fetch police contacts — using defaults');
+    console.log('Online SOS failed:', e.message);
   }
 
-  // ── 6. Show action options ────────────────────────────────────────────────
-  const actions = [
+  // 5. Always show action options
+  const smsBody     = buildSMSMessage(user, location);
+  const mapsUrl     = location ? 'https://maps.google.com?q=' + location.latitude + ',' + location.longitude : null;
+
+  const buttons = [
     {
-      text: '📞 CALL POLICE 117',
+      text: '📞 Call Police 117',
       onPress: () => Linking.openURL('tel:117'),
     },
     {
-      text: '📞 CALL AMBULANCE 15',
-      onPress: () => Linking.openURL('tel:15'),
-    },
-    {
-      text: '📱 SMS ALL POLICE STATIONS',
+      text: '📱 SMS Police',
       onPress: () => {
-        // Send SMS to all registered police stations
-        policeNumbers.forEach((num, idx) => {
-          setTimeout(() => {
-            Linking.openURL(`sms:${num}?body=${smsEncoded}`);
-          }, idx * 500);
-        });
+        // SMS to police with pre-filled message
+        const smsUrl = Platform.OS === 'ios'
+          ? 'sms:117&body=' + encodeURIComponent(smsBody)
+          : 'sms:117?body='  + encodeURIComponent(smsBody);
+        Linking.openURL(smsUrl);
       },
     },
     {
-      text: '🗺 SHARE MY LOCATION',
-      onPress: () => Linking.openURL(mapsLink),
+      text: mapsUrl ? '🗺 Share Location' : '🔕 Deactivate Later',
+      onPress: () => mapsUrl ? Linking.openURL(mapsUrl) : nav('disactivation'),
     },
     {
-      text: '✅ DONE — View Status',
-      onPress: () => nav('confirmation'),
+      text: '✅ Alert Sent — Continue',
+      onPress: () => nav('driverDashboard'),
     },
   ];
 
   Alert.alert(
-    onlineSuccess
-      ? '🚨 SOS SENT — ALL NOTIFIED'
-      : '🚨 SOS TRIGGERED — OFFLINE MODE',
-    onlineSuccess
-      ? `✅ Alert sent to all police & drivers\n${voiceUri ? '🎙 Your voice note is broadcasting\n' : ''}📍 ${lat}° N, ${lng}° E\n\nSelect additional action:`
-      : `⚠ No internet — Use SMS/Call below\n📍 ${lat}° N, ${lng}° E\n\nSMS will be sent to ${policeNumbers.length} police station(s):`,
-    actions
+    sentOnline ? '🚨 SOS ALERT SENT!' : '⚠ OFFLINE — SMS Required',
+    sentOnline
+      ? '✅ Alert sent to all police and drivers!\n\n' +
+        'Your location and voice note are broadcasting.\n\n' +
+        'Police have been notified. Stay safe!'
+      : '⚠ No internet connection!\n\n' +
+        'Please use SMS or phone call to reach police directly.\n\n' +
+        'Your location: ' + (location ? location.latitude.toFixed(4) + '°N' : 'unavailable'),
+    buttons,
+    { cancelable: false }
   );
 
-  return { success: true, onlineSuccess, lat, lng };
+  // 6. If offline — also auto-send SMS in background
+  if (!sentOnline && user?.phoneNumber) {
+    try {
+      const smsUrl = Platform.OS === 'ios'
+        ? 'sms:117&body=' + encodeURIComponent(smsBody)
+        : 'sms:117?body='  + encodeURIComponent(smsBody);
+      await Linking.openURL(smsUrl);
+    } catch (e) { console.log('SMS fallback error:', e.message); }
+  }
+
+  if (nav) nav('confirmation');
+};
+
+// Send SMS to ALL registered drivers and police (called from backend)
+export const notifyAllViaSMS = async (alertData, phoneNumbers) => {
+  const msg = `TSN ALERT: ${alertData.alertType?.toUpperCase()} by ${alertData.driverName} at ${alertData.location?.address}. Badge: ${alertData.driverId}. Call 117.`;
+  for (const number of phoneNumbers) {
+    try {
+      const url = Platform.OS === 'ios'
+        ? 'sms:' + number + '&body=' + encodeURIComponent(msg)
+        : 'sms:' + number + '?body=' + encodeURIComponent(msg);
+      await Linking.openURL(url);
+    } catch (e) {}
+  }
 };

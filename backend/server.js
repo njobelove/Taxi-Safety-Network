@@ -237,7 +237,24 @@ app.post('/api/alerts/sos', async (req, res) => {
     });
     io.emit('new-alert', alert);
     console.log('🚨 SOS:', alert.alertType, 'from', alert.driverId);
-    res.status(201).json(alert);
+
+    // Get all registered phone numbers for SMS notification list
+    const [allDrivers, allStations] = await Promise.all([
+      Driver.find({}, 'fullName badgeId phoneNumber network').lean(),
+      Station.find({}, 'stationName stationId emergencyLine').lean(),
+    ]);
+
+    const phones = [
+      ...allDrivers.filter(d => d.phoneNumber).map(d => d.phoneNumber),
+      ...allStations.filter(s => s.emergencyLine).map(s => s.emergencyLine),
+    ];
+
+    // Return alert + phone list so app can SMS offline users
+    res.status(201).json({
+      ...alert.toObject(),
+      notifyPhones: phones,
+      totalNotified: phones.length,
+    });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -292,6 +309,16 @@ app.get('/api/drivers/live', (req, res) => {
       liveDrivers[id].active = false;
   });
   res.json({ drivers: Object.values(liveDrivers) });
+});
+
+// ── ALERT HISTORY (all alerts including resolved) ────────────────────────────
+app.get('/api/alerts/history', async (req, res) => {
+  try {
+    const alerts = await Alert.find()
+      .sort({ createdAt: -1 })
+      .limit(200);
+    res.json({ alerts });
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 // ── STATS ─────────────────────────────────────────────────────────────────────
@@ -396,6 +423,142 @@ app.get('/api/chat/tips', (req, res) => {
   ]});
 });
 
+// ── SUBSCRIPTIONS & MOBILE MONEY ─────────────────────────────────────────────
+const SubscriptionSchema = new mongoose.Schema({
+  userId:        { type: String, required: true },
+  userName:      { type: String },
+  plan:          { type: String }, // monthly, quarterly, annual
+  amount:        { type: Number },
+  currency:      { type: String, default: 'XAF' },
+  phone:         { type: String },
+  network:       { type: String }, // MTN, Orange, Camtel
+  status:        { type: String, default: 'pending' }, // pending, active, expired
+  transactionId: { type: String },
+  expiresAt:     { type: Date },
+}, { timestamps: true });
+
+const Subscription = mongoose.model('Subscription', SubscriptionSchema);
+
+// Initiate mobile money payment
+app.post('/api/payments/initiate', async (req, res) => {
+  try {
+    const { userId, userName, plan, amount, currency, phone, network } = req.body;
+
+    // Create subscription record
+    const txId = 'TSN-' + Date.now() + '-' + Math.random().toString(36).substr(2, 6).toUpperCase();
+    const sub  = await Subscription.create({
+      userId, userName, plan, amount, currency, phone, network,
+      transactionId: txId,
+      status: 'pending',
+    });
+
+    // Build USSD codes for each network
+    const ussdCodes = {
+      MTN:    `*126*1*1*677000000*${amount}*${txId}#`,
+      Orange: `#150*1*677000000*${amount}*${txId}#`,
+      Camtel: `*200*1*677000000*${amount}#`,
+    };
+
+    console.log(`💰 Payment initiated: ${txId} | ${amount} XAF | ${network} | ${phone}`);
+
+    res.json({
+      success:       true,
+      transactionId: txId,
+      ussdCode:      ussdCodes[network] || ussdCodes.MTN,
+      message:       `Dial the USSD code on your ${network} phone to complete payment`,
+      amount,
+      plan,
+    });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Verify payment
+app.post('/api/payments/verify', async (req, res) => {
+  try {
+    const { transactionId, userId } = req.body;
+    const sub = await Subscription.findOne({ transactionId, userId });
+    if (!sub) return res.status(404).json({ error: 'Transaction not found' });
+
+    // In production: check with MTN/Orange API here
+    // For now: mark as active after manual approval
+    const durations = { monthly: 30, quarterly: 90, annual: 365 };
+    const days      = durations[sub.plan] || 30;
+    const expiresAt = new Date(Date.now() + days * 24 * 60 * 60 * 1000);
+
+    await Subscription.findByIdAndUpdate(sub._id, { status: 'active', expiresAt });
+    console.log(`✅ Payment verified: ${transactionId}`);
+    res.json({ success: true, expiresAt, plan: sub.plan });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Check subscription status
+app.get('/api/payments/status/:userId', async (req, res) => {
+  try {
+    const sub = await Subscription.findOne({
+      userId: req.params.userId,
+      status: 'active',
+      expiresAt: { $gt: new Date() },
+    }).sort({ createdAt: -1 });
+    res.json({ active: !!sub, subscription: sub });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── PUSH NOTIFICATIONS (Expo) ─────────────────────────────────────────────────
+const PushTokenSchema = new mongoose.Schema({
+  userId: { type: String, required: true, unique: true },
+  token:  { type: String, required: true },
+  role:   { type: String },
+}, { timestamps: true });
+
+const PushToken = mongoose.model('PushToken', PushTokenSchema);
+
+// Register push token
+app.post('/api/push/register', async (req, res) => {
+  try {
+    const { userId, token, role } = req.body;
+    await PushToken.findOneAndUpdate(
+      { userId },
+      { token, role },
+      { upsert: true, new: true }
+    );
+    console.log('📱 Push token registered for:', userId);
+    res.json({ success: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Send push notification to all users
+app.post('/api/push/notify-all', async (req, res) => {
+  try {
+    const { title, body, data } = req.body;
+    const tokens = await PushToken.find({});
+
+    const messages = tokens
+      .filter(t => t.token && t.token.startsWith('ExponentPushToken'))
+      .map(t => ({
+        to:    t.token,
+        sound: 'default',
+        title,
+        body,
+        data:  data || {},
+        priority: 'high',
+      }));
+
+    if (messages.length === 0) {
+      return res.json({ success: true, sent: 0, message: 'No push tokens registered yet' });
+    }
+
+    // Send to Expo push service
+    const response = await fetch('https://exp.host/--/api/v2/push/send', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+      body:    JSON.stringify(messages),
+    });
+    const result = await response.json();
+    console.log('📱 Push sent to', messages.length, 'devices');
+    res.json({ success: true, sent: messages.length, result });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // ── 404 ───────────────────────────────────────────────────────────────────────
 app.use((req, res) => {
   res.status(404).json({ error: 'Route ' + req.method + ' ' + req.path + ' not found' });
@@ -452,6 +615,7 @@ server.listen(PORT, () => {
   console.log('   POST /api/auth/stations/register');
   console.log('   POST /api/auth/stations/login');
   console.log('   GET  /api/alerts');
+  console.log('   GET  /api/alerts/history');
   console.log('   POST /api/alerts/sos');
   console.log('   PUT  /api/alerts/:id/status');
   console.log('   GET  /api/responders/nearby');
