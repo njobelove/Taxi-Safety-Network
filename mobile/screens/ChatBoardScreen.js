@@ -203,17 +203,67 @@ export default function ChatBoardScreen({ nav, location }) {
   const playVoice = async (msg) => {
     const id  = msg.id || msg._id;
     const uri = voiceStore.current[id] || msg.voiceUri;
-    if (playingId === id) { await soundRef.current?.stopAsync(); setPlayingId(null); return; }
-    if (!uri || uri.startsWith('blob:')) {
-      Alert.alert('Voice Note', uri ? 'This voice note expired. New recordings are permanent.' : 'Voice note not available.');
+
+    // Stop if already playing this one
+    if (playingId === id) {
+      try { await soundRef.current?.stopAsync(); await soundRef.current?.unloadAsync(); } catch(e){}
+      soundRef.current = null;
+      setPlayingId(null);
       return;
     }
+
+    if (!uri) { Alert.alert('No Voice', 'Voice note not available.'); return; }
+    if (uri.startsWith('blob:')) { Alert.alert('Expired', 'This voice note expired. New ones are permanent.'); return; }
+
+    // Stop any current sound first
+    try { await soundRef.current?.stopAsync(); await soundRef.current?.unloadAsync(); } catch(e){}
+    soundRef.current = null;
+
     try {
-      if (soundRef.current) await soundRef.current.unloadAsync();
-      const { sound } = await Audio.Sound.createAsync({ uri }, { shouldPlay: true, volume: 1.0 });
-      soundRef.current = sound; setPlayingId(id);
-      sound.setOnPlaybackStatusUpdate(s => { if (s.didJustFinish) { setPlayingId(null); sound.unloadAsync(); } });
-    } catch (e) { setPlayingId(null); Alert.alert('Playback Error', e.message); }
+      // iOS REQUIRES audio mode be set before ANY sound operation
+      await Audio.setAudioModeAsync({
+        playsInSilentModeIOS:       true,
+        allowsRecordingIOS:         false,
+        staysActiveInBackground:    false,
+        interruptionModeIOS:        1,
+        interruptionModeAndroid:    1,
+        shouldDuckAndroid:          true,
+        playThroughEarpieceAndroid: false,
+      });
+
+      setPlayingId(id); // Set playing state immediately (iOS needs this before async)
+
+      const { sound } = await Audio.Sound.createAsync(
+        { uri },
+        {
+          shouldPlay:    true,
+          volume:        1.0,
+          isMuted:       false,
+          isLooping:     false,
+          androidImplementation: 'MediaPlayer',
+        }
+      );
+
+      soundRef.current = sound;
+
+      sound.setOnPlaybackStatusUpdate(status => {
+        if (status.didJustFinish || status.error) {
+          try { sound.unloadAsync(); } catch(e){}
+          soundRef.current = null;
+          setPlayingId(null);
+        }
+      });
+
+    } catch (e) {
+      soundRef.current = null;
+      setPlayingId(null);
+      console.log('Voice play error:', e.message);
+      // Show which URI failed for debugging
+      Alert.alert(
+        'Playback Failed',
+        'Error: ' + e.message + '\n\nMake sure:\n• Volume is turned up\n• Not on silent mode (iPhone)\n• Try removing headphones'
+      );
+    }
   };
 
   const handleLike = async (id) => {
