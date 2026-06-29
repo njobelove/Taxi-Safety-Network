@@ -1,51 +1,27 @@
-const fs   = require('fs');
-const path = require('path');
+const fs = require('fs');
 
-const dist     = 'C:/Users/user/Desktop/Final Year/Taxi-Safety-Network/mobile/dist';
+const dist = 'C:/Users/user/Desktop/Final Year/Taxi-Safety-Network/mobile/dist';
+const fontPath = '/assets/node_modules/@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/';
 const assetsDir = dist + '/assets/node_modules/@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts';
 
-if (!fs.existsSync(assetsDir)) {
-  console.log('ERROR: Assets dir not found:', assetsDir);
-  process.exit(1);
-}
+// Read actual exported font filenames
+const files = fs.readdirSync(assetsDir);
+const get = (name) => files.find(f => f.startsWith(name + '.') && f.endsWith('.ttf')) || '';
 
-// Find all font files with their hashed names
-const fontFiles = fs.readdirSync(assetsDir).filter(f => f.endsWith('.ttf'));
-console.log('Found fonts:', fontFiles.length);
+const MaterialIcons          = get('MaterialIcons');
+const Ionicons               = get('Ionicons');
+const FontAwesome5_Solid     = get('FontAwesome5_Solid');
+const FontAwesome5_Regular   = get('FontAwesome5_Regular');
+const FontAwesome5_Brands    = get('FontAwesome5_Brands');
+const AntDesign              = get('AntDesign');
+const Feather                = get('Feather');
+const MaterialCommunityIcons = get('MaterialCommunityIcons');
+const FontAwesome            = files.find(f => /^FontAwesome\.[a-f0-9]+\.ttf$/.test(f)) || '';
 
-// Build @font-face CSS for each font
-const fontFaceMap = {
-  'MaterialIcons':          fontFiles.find(f => f.startsWith('MaterialIcons.')),
-  'Ionicons':               fontFiles.find(f => f.startsWith('Ionicons.')),
-  'FontAwesome5_Solid':     fontFiles.find(f => f.startsWith('FontAwesome5_Solid.')),
-  'FontAwesome5_Regular':   fontFiles.find(f => f.startsWith('FontAwesome5_Regular.')),
-  'FontAwesome5_Brands':    fontFiles.find(f => f.startsWith('FontAwesome5_Brands.')),
-  'AntDesign':              fontFiles.find(f => f.startsWith('AntDesign.')),
-  'Feather':                fontFiles.find(f => f.startsWith('Feather.')),
-  'MaterialCommunityIcons': fontFiles.find(f => f.startsWith('MaterialCommunityIcons.')),
-  'FontAwesome':            fontFiles.find(f => f.startsWith('FontAwesome.') && !f.includes('5') && !f.includes('6')),
-};
+console.log('MaterialIcons:', MaterialIcons);
+console.log('Ionicons:', Ionicons);
+console.log('FontAwesome5_Solid:', FontAwesome5_Solid);
 
-const fontPath = '/assets/node_modules/@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/';
-
-let fontFaceCSS = '';
-Object.entries(fontFaceMap).forEach(([family, file]) => {
-  if (file) {
-    fontFaceCSS += `
-      @font-face {
-        font-family: '${family}';
-        src: url('${fontPath}${file}') format('truetype');
-        font-display: block;
-        font-weight: normal;
-        font-style: normal;
-      }`;
-    console.log('Mapped:', family, '->', file);
-  } else {
-    console.log('MISSING:', family);
-  }
-});
-
-// Write the new index.html
 const html = `<!DOCTYPE html>
 <html lang="en">
   <head>
@@ -63,7 +39,69 @@ const html = `<!DOCTYPE html>
     <link rel="apple-touch-icon" href="/favicon.ico" />
     <title>TSN - Taxi Safety Network</title>
     <style>
-      ${fontFaceCSS}
+      @font-face {
+        font-family: 'MaterialIcons';
+        src: url('${fontPath}${MaterialIcons}') format('truetype');
+        font-display: block;
+        font-weight: normal;
+        font-style: normal;
+      }
+      @font-face {
+        font-family: 'Ionicons';
+        src: url('${fontPath}${Ionicons}') format('truetype');
+        font-display: block;
+        font-weight: normal;
+        font-style: normal;
+      }
+      @font-face {
+        font-family: 'FontAwesome5_Solid';
+        src: url('${fontPath}${FontAwesome5_Solid}') format('truetype');
+        font-display: block;
+        font-weight: normal;
+        font-style: normal;
+      }
+      @font-face {
+        font-family: 'FontAwesome5_Regular';
+        src: url('${fontPath}${FontAwesome5_Regular}') format('truetype');
+        font-display: block;
+        font-weight: normal;
+        font-style: normal;
+      }
+      @font-face {
+        font-family: 'FontAwesome5_Brands';
+        src: url('${fontPath}${FontAwesome5_Brands}') format('truetype');
+        font-display: block;
+        font-weight: normal;
+        font-style: normal;
+      }
+      @font-face {
+        font-family: 'AntDesign';
+        src: url('${fontPath}${AntDesign}') format('truetype');
+        font-display: block;
+        font-weight: normal;
+        font-style: normal;
+      }
+      @font-face {
+        font-family: 'Feather';
+        src: url('${fontPath}${Feather}') format('truetype');
+        font-display: block;
+        font-weight: normal;
+        font-style: normal;
+      }
+      @font-face {
+        font-family: 'MaterialCommunityIcons';
+        src: url('${fontPath}${MaterialCommunityIcons}') format('truetype');
+        font-display: block;
+        font-weight: normal;
+        font-style: normal;
+      }
+      @font-face {
+        font-family: 'FontAwesome';
+        src: url('${fontPath}${FontAwesome}') format('truetype');
+        font-display: block;
+        font-weight: normal;
+        font-style: normal;
+      }
       html, body, #root {
         width: 100%;
         height: 100%;
@@ -81,5 +119,4 @@ const html = `<!DOCTYPE html>
 </html>`;
 
 fs.writeFileSync(dist + '/index.html', html, 'utf8');
-console.log('\nindex.html updated with correct font paths!');
-console.log('Now run: git add . && git commit -m "fix icons" && git push origin TaxiSafty');
+console.log('\ndist/index.html updated with correct hashed font paths!');
