@@ -5,7 +5,7 @@ import {
   ActivityIndicator, KeyboardAvoidingView,
   Platform, ScrollView,
 } from 'react-native';
-import { MaterialIcons, Ionicons } from '@expo/vector-icons';
+import { MaterialIcons, Ionicons, FontAwesome5 } from '../services/Icon';
 import { loginDriver, loginPoliceStation } from '../services/api';
 import { useAuth } from '../services/AuthContext';
 
