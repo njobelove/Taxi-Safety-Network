@@ -14,7 +14,8 @@ const io     = socketIo(server, {
 });
 
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
 const JWT_SECRET  = process.env.JWT_SECRET || 'tsn_secret_2024';
 const MONGODB_URI = process.env.MONGODB_URI;
@@ -66,7 +67,7 @@ const ChatSchema = new mongoose.Schema({
   senderType: { type: String, default: 'driver' },
   message:    { type: String, required: true },
   type:       { type: String, default: 'text' },
-  voiceUri:   { type: String },
+  voiceUri:   { type: String, maxlength: 10000000 }, // 10MB max for base64 audio
   likes:      { type: Number, default: 0 },
 }, { timestamps: true });
 

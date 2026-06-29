@@ -4,9 +4,10 @@ import {
   ScrollView, SafeAreaView, Alert, Image,
   ActivityIndicator, Linking, Platform,
 } from 'react-native';
-import { MaterialIcons, Ionicons, FontAwesome5 } from '@expo/vector-icons';
+import { MaterialIcons, Ionicons } from '@expo/vector-icons';
 import { Audio } from 'expo-av';
 import { useAuth } from '../services/AuthContext';
+import { audioRecorder } from '../services/AudioRecorder';
 
 const RED   = '#d32f2f';
 const BLUE  = '#1565C0';
@@ -21,30 +22,17 @@ export default function ProfileSetupScreen({ nav }) {
   const [profileSaved, setProfileSaved] = useState(false);
   const [saving,       setSaving]       = useState(false);
   const [recSecs,      setRecSecs]      = useState(0);
-  const recordingRef = useRef(null);
-  const timerRef     = useRef(null);
+  const timerRef = useRef(null);
   const isDriver = role === 'driver';
 
   useEffect(() => {
-    return () => { soundObj?.unloadAsync(); clearInterval(timerRef.current); };
+    return () => {
+      soundObj?.unloadAsync();
+      clearInterval(timerRef.current);
+    };
   }, [soundObj]);
 
-  const blobToBase64 = async (uri) => {
-    try {
-      if (Platform.OS === 'web' && uri.startsWith('blob:')) {
-        const response = await fetch(uri);
-        const blob     = await response.blob();
-        return new Promise((resolve, reject) => {
-          const reader   = new FileReader();
-          reader.onload  = () => resolve(reader.result);
-          reader.onerror = reject;
-          reader.readAsDataURL(blob);
-        });
-      }
-      return uri;
-    } catch (e) { return uri; }
-  };
-
+  // ── PHOTO ─────────────────────────────────────────────────────────────────
   const handlePickPhoto = () => {
     if (Platform.OS === 'web') {
       const input  = document.createElement('input');
@@ -64,9 +52,19 @@ export default function ProfileSetupScreen({ nav }) {
       try {
         const IP = require('expo-image-picker');
         const { status } = await IP.requestMediaLibraryPermissionsAsync();
-        if (status !== 'granted') { Alert.alert('Permission Required', 'Please allow photo library access.'); return; }
-        const result = await IP.launchImageLibraryAsync({ mediaTypes: IP.MediaTypeOptions.Images, allowsEditing: true, aspect: [1,1], quality: 0.5 });
-        if (!result.canceled && result.assets[0]) { savePhoto(await blobToBase64(result.assets[0].uri)); setProfileSaved(false); }
+        if (status !== 'granted') {
+          Alert.alert('Permission Required',
+            'Please allow photo library access:\n\niOS: Settings → TSN → Photos → Allow\nAndroid: Settings → Apps → TSN → Permissions → Storage');
+          return;
+        }
+        const result = await IP.launchImageLibraryAsync({ mediaTypes: IP.MediaTypeOptions.Images, allowsEditing: true, aspect: [1,1], quality: 0.4 });
+        if (!result.canceled && result.assets[0]) {
+          const resp = await fetch(result.assets[0].uri);
+          const blob = await resp.blob();
+          const b64  = await new Promise((res,rej) => { const r=new FileReader();r.onload=()=>res(r.result);r.onerror=rej;r.readAsDataURL(blob); });
+          savePhoto(b64);
+          setProfileSaved(false);
+        }
       } catch (e) { Alert.alert('Error', e.message); }
     })();
   };
@@ -78,9 +76,15 @@ export default function ProfileSetupScreen({ nav }) {
         try {
           const IP = require('expo-image-picker');
           const { status } = await IP.requestCameraPermissionsAsync();
-          if (status !== 'granted') { Alert.alert('Permission Required', 'Please allow camera access.'); return; }
-          const result = await IP.launchCameraAsync({ allowsEditing: true, aspect: [1,1], quality: 0.5 });
-          if (!result.canceled && result.assets[0]) { savePhoto(await blobToBase64(result.assets[0].uri)); setProfileSaved(false); }
+          if (status !== 'granted') { Alert.alert('Permission Required', 'Please allow camera access in Settings.'); return; }
+          const result = await IP.launchCameraAsync({ allowsEditing: true, aspect: [1,1], quality: 0.4 });
+          if (!result.canceled && result.assets[0]) {
+            const resp = await fetch(result.assets[0].uri);
+            const blob = await resp.blob();
+            const b64  = await new Promise((res,rej) => { const r=new FileReader();r.onload=()=>res(r.result);r.onerror=rej;r.readAsDataURL(blob); });
+            savePhoto(b64);
+            setProfileSaved(false);
+          }
         } catch (e) { Alert.alert('Error', e.message); }
       }},
       { text: 'Choose from Gallery', onPress: handlePickPhoto },
@@ -88,46 +92,53 @@ export default function ProfileSetupScreen({ nav }) {
     ]);
   };
 
+  // ── VOICE RECORDING ───────────────────────────────────────────────────────
   const startRecording = async () => {
-    try {
-      const { status } = await Audio.requestPermissionsAsync();
-      if (status !== 'granted') { Alert.alert('Permission Required', 'Please allow microphone access.'); return; }
-      await Audio.setAudioModeAsync({ allowsRecordingIOS: true, playsInSilentModeIOS: true });
-      const { recording } = await Audio.Recording.createAsync(Audio.RecordingOptionsPresets.HIGH_QUALITY);
-      recordingRef.current = recording;
-      setIsRecording(true); setRecSecs(0);
+    const started = await audioRecorder.start();
+    if (started) {
+      setIsRecording(true);
+      setRecSecs(0);
       timerRef.current = setInterval(() => setRecSecs(s => s + 1), 1000);
-    } catch (e) { Alert.alert('Recording Error', e.message); }
+    }
   };
 
   const stopRecording = async () => {
-    try {
-      clearInterval(timerRef.current); setIsRecording(false);
-      await recordingRef.current.stopAndUnloadAsync();
-      const uri  = recordingRef.current.getURI();
-      const b64  = await blobToBase64(uri);
-      saveVoice(b64); setProfileSaved(false);
-      Alert.alert('Voice Note Saved', 'Your voice note has been saved permanently!\n\nThis voice will broadcast to police and drivers when you trigger SOS.\n\nTap SAVE PROFILE to confirm.');
-    } catch (e) { Alert.alert('Error', 'Could not save recording: ' + e.message); }
+    clearInterval(timerRef.current);
+    setIsRecording(false);
+    const base64Uri = await audioRecorder.stop();
+    if (base64Uri) {
+      saveVoice(base64Uri);
+      setProfileSaved(false);
+      Alert.alert('✅ Voice Note Saved', 'Your voice note has been saved permanently!\n\nThis voice will broadcast to police and drivers when you trigger SOS.\n\nTap SAVE PROFILE to confirm.');
+    } else {
+      Alert.alert('Recording Failed', 'Could not save recording. Please try again.');
+    }
   };
 
   const playVoiceNote = async () => {
     try {
       if (!voiceUri) { Alert.alert('No Recording', 'Please record your voice note first.'); return; }
       if (playing) { await soundObj?.stopAsync(); setPlaying(false); return; }
-      const { sound } = await Audio.Sound.createAsync({ uri: voiceUri });
-      setSoundObj(sound); setPlaying(true); await sound.playAsync();
-      sound.setOnPlaybackStatusUpdate(status => { if (status.didJustFinish) { setPlaying(false); sound.unloadAsync(); } });
+
+      // Set audio mode for playback
+      await Audio.setAudioModeAsync({ playsInSilentModeIOS: true, allowsRecordingIOS: false });
+      const { sound } = await Audio.Sound.createAsync({ uri: voiceUri }, { shouldPlay: true, volume: 1.0 });
+      setSoundObj(sound);
+      setPlaying(true);
+      sound.setOnPlaybackStatusUpdate(status => {
+        if (status.didJustFinish) { setPlaying(false); sound.unloadAsync(); }
+      });
     } catch (e) { setPlaying(false); Alert.alert('Playback Error', e.message); }
   };
 
   const handleSaveProfile = async () => {
     if (!profilePhoto && !voiceUri) { Alert.alert('Nothing to Save', 'Please upload a photo or record a voice note first.'); return; }
     setSaving(true);
-    await new Promise(r => setTimeout(r, 600));
-    setSaving(false); setProfileSaved(true);
-    Alert.alert('Profile Saved!',
-      (profilePhoto ? 'Profile photo saved\n' : '') + (voiceUri ? 'Voice note saved permanently\n' : '') + '\nYou will NOT need to re-upload these again.',
+    await new Promise(r => setTimeout(r, 400));
+    setSaving(false);
+    setProfileSaved(true);
+    Alert.alert('✅ Profile Saved!',
+      (profilePhoto ? '📷 Profile photo saved\n' : '') + (voiceUri ? '🎙 Voice note saved permanently\n' : '') + '\nYou will NOT need to re-upload these again.',
       [{ text: 'Great!', onPress: () => nav(isDriver ? 'driverDashboard' : 'policeDashboard') }]
     );
   };
@@ -171,27 +182,16 @@ export default function ProfileSetupScreen({ nav }) {
             <MaterialIcons name={isDriver ? 'directions-car' : 'local-police'} size={14} color="#fff" />
             <Text style={s.roleTxt}>{isDriver ? 'TAXI DRIVER' : 'POLICE STATION'}</Text>
           </View>
-          <Text style={s.tapHint}>
-            {profilePhoto ? 'Photo saved · Tap to change' : 'Tap to upload photo'}
-          </Text>
+          <Text style={s.tapHint}>{profilePhoto ? 'Photo saved · Tap to change' : 'Tap to upload photo'}</Text>
         </View>
 
         {/* Save button */}
         {(profilePhoto || voiceUri) && (
-          <TouchableOpacity
-            style={[s.saveBtn, profileSaved && { backgroundColor: GREEN }]}
-            onPress={handleSaveProfile}
-            disabled={saving}
-          >
-            {saving
-              ? <ActivityIndicator color="#fff" />
-              : <>
-                  <MaterialIcons name={profileSaved ? 'check-circle' : 'save'} size={20} color="#fff" />
-                  <Text style={s.saveBtnTxt}>
-                    {profileSaved ? 'PROFILE SAVED' : 'SAVE PROFILE TO MY ACCOUNT'}
-                  </Text>
-                </>
-            }
+          <TouchableOpacity style={[s.saveBtn, profileSaved && { backgroundColor: GREEN }]} onPress={handleSaveProfile} disabled={saving}>
+            {saving ? <ActivityIndicator color="#fff" /> : <>
+              <MaterialIcons name={profileSaved ? 'check-circle' : 'save'} size={20} color="#fff" />
+              <Text style={s.saveBtnTxt}>{profileSaved ? 'PROFILE SAVED' : 'SAVE PROFILE TO MY ACCOUNT'}</Text>
+            </>}
           </TouchableOpacity>
         )}
 
@@ -202,14 +202,13 @@ export default function ProfileSetupScreen({ nav }) {
             <Text style={s.cardTitle}>VOICE IDENTITY NOTE</Text>
           </View>
           <Text style={s.cardSub}>
-            Record anything in your own words. This voice plays automatically
-            to police and drivers when you trigger an SOS alert.
+            Record your name and plate number. This voice plays automatically to police and drivers when you trigger SOS.
           </Text>
 
           {voiceUri && !voiceUri.startsWith('blob:') && (
             <View style={s.voiceSavedBanner}>
               <MaterialIcons name="check-circle" size={16} color={GREEN} />
-              <View>
+              <View style={{ flex: 1 }}>
                 <Text style={s.voiceSavedTxt}>Voice note saved permanently</Text>
                 <Text style={{ fontSize: 10, color: '#555', marginTop: 2 }}>Will broadcast on SOS to police and drivers</Text>
               </View>
@@ -223,6 +222,16 @@ export default function ProfileSetupScreen({ nav }) {
             </View>
           )}
 
+          {/* iOS Safari note */}
+          {Platform.OS === 'web' && (
+            <View style={{ backgroundColor: '#e3f2fd', borderRadius: 8, padding: 10, marginBottom: 12 }}>
+              <Text style={{ fontSize: 11, color: BLUE, lineHeight: 16 }}>
+                📱 On iPhone Safari: tap the mic button and allow microphone access when prompted.{'\n'}
+                On Android Chrome: allow microphone access when the browser asks.
+              </Text>
+            </View>
+          )}
+
           <View style={s.voiceBtnsRow}>
             {isRecording ? (
               <TouchableOpacity style={[s.voiceBtn, { backgroundColor: RED, flex: 1 }]} onPress={stopRecording}>
@@ -232,16 +241,11 @@ export default function ProfileSetupScreen({ nav }) {
             ) : (
               <TouchableOpacity style={[s.voiceBtn, { backgroundColor: '#333', flex: 1 }]} onPress={startRecording}>
                 <MaterialIcons name="mic" size={18} color="#fff" />
-                <Text style={s.voiceBtnTxt}>
-                  {voiceUri && !voiceUri.startsWith('blob:') ? 'RE-RECORD' : 'RECORD VOICE'}
-                </Text>
+                <Text style={s.voiceBtnTxt}>{voiceUri && !voiceUri.startsWith('blob:') ? 'RE-RECORD' : 'TAP TO RECORD'}</Text>
               </TouchableOpacity>
             )}
             {voiceUri && !voiceUri.startsWith('blob:') && (
-              <TouchableOpacity
-                style={[s.voiceBtn, { backgroundColor: playing ? GOLD : GREEN }]}
-                onPress={playVoiceNote}
-              >
+              <TouchableOpacity style={[s.voiceBtn, { backgroundColor: playing ? GOLD : GREEN }]} onPress={playVoiceNote}>
                 <MaterialIcons name={playing ? 'stop' : 'play-arrow'} size={18} color="#fff" />
                 <Text style={s.voiceBtnTxt}>{playing ? 'STOP' : 'PLAY'}</Text>
               </TouchableOpacity>
@@ -251,7 +255,7 @@ export default function ProfileSetupScreen({ nav }) {
           {isRecording && (
             <View style={s.recordingBanner}>
               <MaterialIcons name="fiber-manual-record" size={14} color={RED} />
-              <Text style={s.recordingTxt}>Recording... {recSecs}s — Say anything. Tap STOP when done.</Text>
+              <Text style={s.recordingTxt}>🔴 Recording... {recSecs}s — Say your name and plate number. Tap STOP when done.</Text>
             </View>
           )}
         </View>
@@ -262,12 +266,11 @@ export default function ProfileSetupScreen({ nav }) {
             <MaterialIcons name="emergency" size={18} color="#888" />
             <Text style={s.cardTitle}>EMERGENCY CONTACTS</Text>
           </View>
-          <Text style={s.cardSub}>Connected to your SOS button — tap to call</Text>
           {[
-            { label: 'Police Emergency',   number: '117',           icon: 'local-police',    color: BLUE  },
-            { label: 'Fire Brigade',       number: '118',           icon: 'local-fire-department', color: RED },
-            { label: 'Ambulance / SAMU',   number: '15',            icon: 'medical-services', color: GREEN },
-            { label: 'TSN Command Centre', number: '+237675000000', icon: 'security',         color: '#8B4513' },
+            { label: 'Police Emergency',   number: '117',           icon: 'local-police',          color: BLUE  },
+            { label: 'Fire Brigade',       number: '118',           icon: 'local-fire-department', color: RED   },
+            { label: 'Ambulance / SAMU',   number: '15',            icon: 'medical-services',      color: GREEN },
+            { label: 'TSN Command Centre', number: '+237675000000', icon: 'security',              color: '#8B4513' },
           ].map(({ label, number, icon, color }) => (
             <TouchableOpacity key={number} style={s.emergencyRow} onPress={() => callEmergency(number, label)}>
               <View style={[s.emergencyIcoBg, { backgroundColor: color }]}>
@@ -293,12 +296,12 @@ export default function ProfileSetupScreen({ nav }) {
           </View>
           {isDriver ? (
             <>
-              <InfoRow label="Full Name"     value={user?.fullName}     icon="person"         />
-              <InfoRow label="Badge ID"      value={user?.badgeId}      icon="badge"          />
-              <InfoRow label="Phone"         value={user?.phoneNumber}  icon="phone"          />
+              <InfoRow label="Full Name"     value={user?.fullName}     icon="person"              />
+              <InfoRow label="Badge ID"      value={user?.badgeId}      icon="badge"               />
+              <InfoRow label="Phone"         value={user?.phoneNumber}  icon="phone"               />
               <InfoRow label="Network"       value={user?.network}      icon="signal-cellular-alt" />
-              <InfoRow label="Vehicle Plate" value={user?.vehiclePlate} icon="directions-car" />
-              <InfoRow label="City"          value={user?.city}         icon="location-city"  />
+              <InfoRow label="Vehicle Plate" value={user?.vehiclePlate} icon="directions-car"      />
+              <InfoRow label="City"          value={user?.city}         icon="location-city"       />
             </>
           ) : (
             <>
@@ -319,16 +322,16 @@ export default function ProfileSetupScreen({ nav }) {
             <Text style={s.cardTitle}>QUICK ACTIONS</Text>
           </View>
           {[
-            { icon: 'dashboard',     lbl: 'Dashboard',           to: isDriver ? 'driverDashboard' : 'policeDashboard', color: BLUE  },
-            { icon: 'map',           lbl: 'Live Driver Map',      to: 'liveMap',      color: GREEN },
-            { icon: 'chat',          lbl: 'Community Chat',       to: 'chatBoard',    color: '#8B4513' },
-            { icon: 'bar-chart',     lbl: 'Statistics',           to: 'statistics',   color: BLUE  },
-            { icon: 'history',       lbl: 'Alert History',        to: 'history',      color: '#555' },
-            { icon: 'settings',      lbl: 'Settings',             to: 'settings',     color: '#555' },
-            { icon: 'star',          lbl: 'Subscribe / Upgrade',  to: 'subscription', color: '#f5c518' },
+            { icon: 'dashboard',         lbl: 'Dashboard',           to: isDriver ? 'driverDashboard' : 'policeDashboard', color: BLUE  },
+            { icon: 'map',               lbl: 'Live Driver Map',      to: 'liveMap',       color: GREEN       },
+            { icon: 'chat',              lbl: 'Community Chat',       to: 'chatBoard',     color: '#8B4513'   },
+            { icon: 'bar-chart',         lbl: 'Statistics',           to: 'statistics',    color: BLUE        },
+            { icon: 'history',           lbl: 'Alert History',        to: 'history',       color: '#555'      },
+            { icon: 'settings',          lbl: 'Settings',             to: 'settings',      color: '#555'      },
+            { icon: 'star',              lbl: 'Subscribe / Upgrade',  to: 'subscription',  color: GOLD        },
             ...(isDriver ? [
-              { icon: 'warning',     lbl: 'Report Emergency',     to: 'emergency',    color: RED   },
-              { icon: 'notifications-off', lbl: 'Deactivate My Alert', to: 'disactivation', color: GREEN },
+              { icon: 'warning',         lbl: 'Report Emergency',     to: 'emergency',     color: RED         },
+              { icon: 'notifications-off',lbl:'Deactivate My Alert',  to: 'disactivation', color: GREEN       },
             ] : []),
           ].map(({ icon, lbl, to, color }) => (
             <TouchableOpacity key={lbl} style={s.actionBtn} onPress={() => nav(to)}>
@@ -339,11 +342,7 @@ export default function ProfileSetupScreen({ nav }) {
           ))}
         </View>
 
-        {/* Logout */}
-        <TouchableOpacity
-          style={s.logoutBtn}
-          onPress={() => { logout(); nav('login'); }}
-        >
+        <TouchableOpacity style={s.logoutBtn} onPress={() => { logout(); nav('login'); }}>
           <MaterialIcons name="logout" size={20} color="#fff" />
           <Text style={s.logoutTxt}>LOGOUT / DÉCONNEXION</Text>
         </TouchableOpacity>
@@ -353,16 +352,12 @@ export default function ProfileSetupScreen({ nav }) {
 
       <View style={s.bottomNav}>
         {[
-          { icon: 'dashboard',  lbl: 'DASHBOARD', to: isDriver ? 'driverDashboard' : 'policeDashboard' },
+          { icon: 'dashboard', lbl: 'DASHBOARD', to: isDriver ? 'driverDashboard' : 'policeDashboard' },
           { icon: isDriver ? 'warning' : 'assignment', lbl: isDriver ? 'ALERTS' : 'INCIDENTS', to: isDriver ? 'emergency' : 'policeDashboard' },
-          { icon: 'chat',       lbl: 'CHAT',      to: 'chatBoard'    },
-          { icon: 'person',     lbl: 'PROFILE',   to: 'profileSetup' },
+          { icon: 'chat',   lbl: 'CHAT',    to: 'chatBoard'    },
+          { icon: 'person', lbl: 'PROFILE', to: 'profileSetup' },
         ].map(({ icon, lbl, to }) => (
-          <TouchableOpacity
-            key={lbl}
-            style={lbl === 'PROFILE' ? s.navActive : s.navItem}
-            onPress={() => nav(to)}
-          >
+          <TouchableOpacity key={lbl} style={lbl === 'PROFILE' ? s.navActive : s.navItem} onPress={() => nav(to)}>
             <MaterialIcons name={icon} size={22} color={lbl === 'PROFILE' ? '#fff' : '#aaa'} />
             <Text style={lbl === 'PROFILE' ? s.navTxtA : s.navTxt}>{lbl}</Text>
           </TouchableOpacity>
@@ -406,8 +401,8 @@ const s = StyleSheet.create({
   voiceSavedBanner: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: '#e8f5e9', borderRadius: 10, padding: 10, marginBottom: 12 },
   voiceSavedTxt:    { fontSize: 12, color: GREEN, fontWeight: '700' },
   voiceBtnsRow:     { flexDirection: 'row', gap: 8, marginBottom: 10 },
-  voiceBtn:         { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', borderRadius: 12, paddingVertical: 13, paddingHorizontal: 14, gap: 6 },
-  voiceBtnTxt:      { fontSize: 12, fontWeight: '800', color: '#fff' },
+  voiceBtn:         { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', borderRadius: 12, paddingVertical: 14, paddingHorizontal: 14, gap: 6 },
+  voiceBtnTxt:      { fontSize: 13, fontWeight: '800', color: '#fff' },
   recordingBanner:  { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: '#fde8e8', borderRadius: 10, padding: 10 },
   recordingTxt:     { flex: 1, fontSize: 11, color: RED, fontWeight: '600', lineHeight: 16 },
   emergencyRow:     { flexDirection: 'row', alignItems: 'center', paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#f5f5f5' },
