@@ -4,92 +4,34 @@
     <meta charset="utf-8" />
     <meta httpEquiv="X-UA-Compatible" content="IE=edge" />
     <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
-    <meta name="theme-color" content="#d32f2f" />
-    <meta name="application-name" content="TSN" />
-    <meta name="apple-mobile-web-app-capable" content="yes" />
-    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
-    <meta name="apple-mobile-web-app-title" content="TSN" />
-    <meta name="description" content="Taxi Safety Network - Emergency alert system for taxi drivers in Cameroon" />
-    <meta name="mobile-web-app-capable" content="yes" />
-    <link rel="manifest" href="/manifest.json" />
-    <link rel="apple-touch-icon" href="/favicon.ico" />
-    <title>TSN - Taxi Safety Network</title>
-    <style>
-      @font-face {
-        font-family: 'MaterialIcons';
-        src: url('/assets/node_modules/@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/MaterialIcons.4e85bc9ebe07e0340c9c4fc2f6c38908.ttf') format('truetype');
-        font-display: block;
-        font-weight: normal;
-        font-style: normal;
-      }
-      @font-face {
-        font-family: 'Ionicons';
-        src: url('/assets/node_modules/@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/Ionicons.6148e7019854f3bde85b633cb88f3c25.ttf') format('truetype');
-        font-display: block;
-        font-weight: normal;
-        font-style: normal;
-      }
-      @font-face {
-        font-family: 'FontAwesome5_Solid';
-        src: url('/assets/node_modules/@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/FontAwesome5_Solid.605ed7926cf39a2ad5ec2d1f9d391d3d.ttf') format('truetype');
-        font-display: block;
-        font-weight: normal;
-        font-style: normal;
-      }
-      @font-face {
-        font-family: 'FontAwesome5_Regular';
-        src: url('/assets/node_modules/@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/FontAwesome5_Regular.1f77739ca9ff2188b539c36f30ffa2be.ttf') format('truetype');
-        font-display: block;
-        font-weight: normal;
-        font-style: normal;
-      }
-      @font-face {
-        font-family: 'FontAwesome5_Brands';
-        src: url('/assets/node_modules/@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/FontAwesome5_Brands.3b89dd103490708d19a95adcae52210e.ttf') format('truetype');
-        font-display: block;
-        font-weight: normal;
-        font-style: normal;
-      }
-      @font-face {
-        font-family: 'AntDesign';
-        src: url('/assets/node_modules/@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/AntDesign.3a2ba31570920eeb9b1d217cabe58315.ttf') format('truetype');
-        font-display: block;
-        font-weight: normal;
-        font-style: normal;
-      }
-      @font-face {
-        font-family: 'Feather';
-        src: url('/assets/node_modules/@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/Feather.a76d309774d33d9856f650bed4292a23.ttf') format('truetype');
-        font-display: block;
-        font-weight: normal;
-        font-style: normal;
-      }
-      @font-face {
-        font-family: 'MaterialCommunityIcons';
-        src: url('/assets/node_modules/@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/MaterialCommunityIcons.b62641afc9ab487008e996a5c5865e56.ttf') format('truetype');
-        font-display: block;
-        font-weight: normal;
-        font-style: normal;
-      }
-      @font-face {
-        font-family: 'FontAwesome';
-        src: url('/assets/node_modules/@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/FontAwesome.b06871f281fee6b241d60582ae9369b9.ttf') format('truetype');
-        font-display: block;
-        font-weight: normal;
-        font-style: normal;
-      }
-      html, body, #root {
-        width: 100%;
+    <title>Taxi Safety Network</title>
+    <!-- The `react-native-web` recommended style reset: https://necolas.github.io/react-native-web/docs/setup/#root-element -->
+    <style id="expo-reset">
+      /* These styles make the body full-height */
+      html,
+      body {
         height: 100%;
-        margin: 0;
-        padding: 0;
-        background-color: #ffffff;
+      }
+      /* These styles disable body scrolling if you are using <ScrollView> */
+      body {
         overflow: hidden;
       }
-      #root { display: flex; flex: 1; }
+      /* These styles make the root element full-height */
+      #root {
+        display: flex;
+        height: 100%;
+        flex: 1;
+      }
     </style>
-  </head>
+  <link rel="shortcut icon" href="/favicon.ico" /></head>
+
   <body>
+    <!-- Use static rendering with Expo Router to support running without JavaScript. -->
+    <noscript>
+      You need to enable JavaScript to run this app.
+    </noscript>
+    <!-- The root element for your Expo app. -->
     <div id="root"></div>
-  </body>
+  <script src="/_expo/static/js/web/index-658895fc15a0cf121378f6dcae28e988.js" defer></script>
+</body>
 </html>

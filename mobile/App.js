@@ -1,8 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { View, ActivityIndicator, Text } from 'react-native';
+import { View, ActivityIndicator } from 'react-native';
 import * as Location from 'expo-location';
-import * as Font from 'expo-font';
-import { MaterialIcons } from '@expo/vector-icons';
 import { AuthProvider, useAuth } from './services/AuthContext';
 
 import LoginScreen         from './screens/LoginScreen';
@@ -22,36 +20,18 @@ import SettingsScreen      from './screens/SettingsScreen';
 
 function Navigator() {
   const { user, role, loading } = useAuth();
-  const [screen,      setScreen]      = useState('login');
-  const [location,    setLocation]    = useState(null);
-  const [fontsLoaded, setFontsLoaded] = useState(false);
-
-  useEffect(() => {
-    async function prepare() {
-      try {
-        await Font.loadAsync({
-          ...MaterialIcons.font,
-          // Load each font file directly from node_modules
-          'MaterialIcons': require('./node_modules/@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/MaterialIcons.ttf'),
-          'Ionicons':      require('./node_modules/@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/Ionicons.ttf'),
-          'FontAwesome5_Solid':   require('./node_modules/@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/FontAwesome5_Solid.ttf'),
-          'FontAwesome5_Regular': require('./node_modules/@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/FontAwesome5_Regular.ttf'),
-          'FontAwesome5_Brands':  require('./node_modules/@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/FontAwesome5_Brands.ttf'),
-        });
-      } catch (e) {
-        console.warn('Font loading error:', e);
-      } finally {
-        setFontsLoaded(true);
-      }
-    }
-    prepare();
-  }, []);
+  const [screen,   setScreen]   = useState('login');
+  const [location, setLocation] = useState(null);
 
   useEffect(() => {
     if (loading) return;
-    if (user && role === 'driver')      setScreen('driverDashboard');
-    else if (user && role === 'police') setScreen('policeDashboard');
-    else                                setScreen('login');
+    if (user && role === 'driver') {
+      setScreen('driverDashboard');
+    } else if (user && role === 'police') {
+      setScreen('policeDashboard');
+    } else {
+      setScreen('login');
+    }
   }, [user, role, loading]);
 
   useEffect(() => {
@@ -60,25 +40,25 @@ function Navigator() {
       try {
         const { status } = await Location.requestForegroundPermissionsAsync();
         if (status !== 'granted') return;
-        const pos = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+        const pos = await Location.getCurrentPositionAsync({
+          accuracy: Location.Accuracy.Balanced,
+        });
         setLocation(pos.coords);
         subscription = await Location.watchPositionAsync(
           { accuracy: Location.Accuracy.High, timeInterval: 3000, distanceInterval: 5 },
           (p) => setLocation(p.coords)
         );
-      } catch (e) { console.log('Location error:', e.message); }
+      } catch (e) {
+        console.log('Location error:', e.message);
+      }
     })();
     return () => { if (subscription) subscription.remove(); };
   }, []);
 
-  if (loading || !fontsLoaded) {
+  if (loading) {
     return (
-      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#d32f2f' }}>
-        <Text style={{ fontSize: 48, marginBottom: 20 }}>🛡</Text>
-        <ActivityIndicator size="large" color="#fff" />
-        <Text style={{ color: '#fff', marginTop: 16, fontWeight: '700', fontSize: 14 }}>
-          TAXI SAFETY NETWORK
-        </Text>
+      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#f5f5f5' }}>
+        <ActivityIndicator size="large" color="#d32f2f" />
       </View>
     );
   }
