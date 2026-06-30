@@ -63,7 +63,7 @@ export default function ChatBoardScreen({ nav, location }) {
 
   useEffect(() => {
     loadAll();
-    intervalRef.current = setInterval(loadMessages, 8000);
+    intervalRef.current = setInterval(loadMessages, 3000);
     return () => {
       clearInterval(intervalRef.current);
       clearInterval(timerRef.current);
@@ -94,7 +94,18 @@ export default function ChatBoardScreen({ nav, location }) {
         }
         return msg;
       });
-      setMessages(msgs);
+
+      // Keep any local-only optimistic messages (still being sent) that the
+      // server poll hasn't returned yet, so they don't flicker/disappear.
+      setMessages(prev => {
+        const serverIds = new Set(msgs.map(m => m.id || m._id));
+        const pendingLocal = prev.filter(m => {
+          const id = m.id || m._id;
+          return typeof id === 'string' && id.startsWith('local_') && !serverIds.has(id);
+        });
+        return [...msgs, ...pendingLocal];
+      });
+
       setTimeout(() => scrollRef.current?.scrollToEnd({ animated: false }), 200);
     } catch (e) { setError('Could not load messages. Check connection.'); }
   };
@@ -300,34 +311,42 @@ export default function ChatBoardScreen({ nav, location }) {
   const handleDeleteMessage = (msg) => {
     const id = msg.id || msg._id;
     if (msg.senderId !== myId) {
-      Alert.alert('Cannot Delete', 'You can only delete your own messages.');
+      if (Platform.OS === 'web') window.alert('You can only delete your own messages.');
+      else Alert.alert('Cannot Delete', 'You can only delete your own messages.');
       return;
     }
-    Alert.alert(
-      'Delete Message',
-      'Delete this message for everyone? This cannot be undone.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete for Everyone',
-          style: 'destructive',
-          onPress: async () => {
-            // Remove locally immediately
-            setMessages(prev => prev.filter(m => (m.id || m._id) !== id));
-            voiceStore.current[id] && delete voiceStore.current[id];
-            try {
-              await fetch(BASE_URL + '/api/chat/messages/' + id, {
-                method: 'DELETE',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ senderId: myId }),
-              });
-            } catch (e) {
-              console.log('Delete error:', e.message);
-            }
-          },
-        },
-      ]
-    );
+
+    const doDelete = async () => {
+      // Remove locally immediately
+      setMessages(prev => prev.filter(m => (m.id || m._id) !== id));
+      if (voiceStore.current[id]) delete voiceStore.current[id];
+      try {
+        await fetch(BASE_URL + '/api/chat/messages/' + id, {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ senderId: myId }),
+        });
+        console.log('Message deleted:', id);
+      } catch (e) {
+        console.log('Delete error:', e.message);
+      }
+    };
+
+    if (Platform.OS === 'web') {
+      // window.confirm works reliably on all browsers, unlike Alert.alert on RN Web
+      if (window.confirm('Delete this message for everyone? This cannot be undone.')) {
+        doDelete();
+      }
+    } else {
+      Alert.alert(
+        'Delete Message',
+        'Delete this message for everyone? This cannot be undone.',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Delete for Everyone', style: 'destructive', onPress: doDelete },
+        ]
+      );
+    }
   };
 
   return (

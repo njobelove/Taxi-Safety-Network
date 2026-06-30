@@ -673,6 +673,7 @@ server.listen(PORT, () => {
   console.log('   GET  /api/chat/messages');
   console.log('   POST /api/chat/messages');
   console.log('   POST /api/chat/messages/:id/like');
+  console.log('   DELETE /api/chat/messages/:id');
   console.log('   GET  /api/chat/tips');
   console.log('   GET  /api/drivers/live');
   console.log('   POST /api/drivers/live-location');
