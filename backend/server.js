@@ -117,6 +117,25 @@ mongoose.connection.once('open', seedChat);
 let liveDrivers = {};
 
 // ── HEALTH ────────────────────────────────────────────────────────────────────
+// ── TEST SMS — send to ONE specific number (for demos/testing) ──────────────
+app.post('/api/sms/test', async (req, res) => {
+  try {
+    const { phone, message } = req.body;
+    if (!phone) return res.status(400).json({ error: 'phone is required' });
+
+    const testMessage = message ||
+      `TSN TEST ALERT: This is a test SOS notification from Taxi Safety Network. ` +
+      `In a real emergency, you would receive driver location and details here.`;
+
+    const result = await broadcastSOS(
+      { alertType: 'test', driverName: 'Demo Driver', driverId: 'TEST-001', location: { address: 'Yaoundé, Cameroon' }, vehiclePlate: 'DEMO-001' },
+      [phone]
+    );
+
+    res.json({ success: result.success, sentTo: phone, result });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 app.get('/api/health', async (req, res) => {
   const db = mongoose.connection.readyState === 1 ? 'connected' : 'disconnected';
   res.json({
