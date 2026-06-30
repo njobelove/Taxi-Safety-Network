@@ -40,7 +40,70 @@ const css = Object.entries(fonts).filter(([,v])=>v).map(([family,file]) => `
     font-display: block;
     font-weight: normal;
     font-style: normal;
-  }`).join('');
+  }`).join('') + `
+  @font-face {
+    font-family: 'material';
+    src: url('/fonts/${fonts.MaterialIcons}') format('truetype');
+    font-display: block;
+    font-weight: normal;
+    font-style: normal;
+  }
+  @font-face {
+    font-family: 'material-community';
+    src: url('/fonts/${fonts.MaterialCommunityIcons}') format('truetype');
+    font-display: block;
+    font-weight: normal;
+    font-style: normal;
+  }
+  @font-face {
+    font-family: 'ionicons';
+    src: url('/fonts/${fonts.Ionicons}') format('truetype');
+    font-display: block;
+    font-weight: normal;
+    font-style: normal;
+  }
+  @font-face {
+    font-family: 'font-awesome';
+    src: url('/fonts/${fonts.FontAwesome}') format('truetype');
+    font-display: block;
+    font-weight: normal;
+    font-style: normal;
+  }
+  @font-face {
+    font-family: 'font-awesome-5-solid';
+    src: url('/fonts/${fonts.FontAwesome5_Solid}') format('truetype');
+    font-display: block;
+    font-weight: normal;
+    font-style: normal;
+  }
+  @font-face {
+    font-family: 'font-awesome-5-regular';
+    src: url('/fonts/${fonts.FontAwesome5_Regular}') format('truetype');
+    font-display: block;
+    font-weight: normal;
+    font-style: normal;
+  }
+  @font-face {
+    font-family: 'font-awesome-5-brands';
+    src: url('/fonts/${fonts.FontAwesome5_Brands}') format('truetype');
+    font-display: block;
+    font-weight: normal;
+    font-style: normal;
+  }
+  @font-face {
+    font-family: 'antdesign';
+    src: url('/fonts/${fonts.AntDesign}') format('truetype');
+    font-display: block;
+    font-weight: normal;
+    font-style: normal;
+  }
+  @font-face {
+    font-family: 'feather';
+    src: url('/fonts/${fonts.Feather}') format('truetype');
+    font-display: block;
+    font-weight: normal;
+    font-style: normal;
+  }`;
 
 // ── KEY FIX: read the REAL Expo-generated index.html, don't replace it ──
 const indexPath = path.join(dist, 'index.html');
