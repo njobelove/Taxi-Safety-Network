@@ -1,9 +1,4 @@
 {
   "version": 2,
-  "rewrites": [
-    {
-      "source": "/((?!_expo|assets|favicon\\.ico|manifest\\.json|metadata\\.json|public).*)",
-      "destination": "/index.html"
-    }
-  ]
+  "public": true
 }
