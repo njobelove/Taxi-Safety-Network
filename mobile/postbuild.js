@@ -1,15 +1,25 @@
+/**
+ * TSN Post-Build Script v2
+ * Copies fonts to a clean /fonts/ path (avoids node_modules in URL which Vercel may ignore)
+ */
 const fs   = require('fs');
 const path = require('path');
 
 const dist      = path.join(__dirname, 'dist');
-const assetsDir = path.join(dist, 'assets/node_modules/@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts');
+const srcFonts  = path.join(dist, 'assets/node_modules/@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts');
+const destFonts = path.join(dist, 'fonts');
 
 if (!fs.existsSync(dist)) { console.error('No dist/ folder. Run expo export first.'); process.exit(1); }
-if (!fs.existsSync(assetsDir)) { console.error('No font assets in dist. Make sure App.js has font requires.'); process.exit(1); }
+if (!fs.existsSync(srcFonts)) { console.error('No font assets in dist. Make sure App.js has font requires.'); process.exit(1); }
 
-const fontPath = '/assets/node_modules/@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/';
-const files    = fs.readdirSync(assetsDir).filter(f => f.endsWith('.ttf'));
-const get      = (name) => files.find(f => f.startsWith(name + '.') && f.endsWith('.ttf')) || '';
+// Create clean fonts folder (no node_modules in path)
+if (!fs.existsSync(destFonts)) fs.mkdirSync(destFonts, { recursive: true });
+
+const files = fs.readdirSync(srcFonts).filter(f => f.endsWith('.ttf'));
+files.forEach(f => fs.copyFileSync(path.join(srcFonts, f), path.join(destFonts, f)));
+console.log('Copied', files.length, 'fonts to dist/fonts/ (clean path)');
+
+const get = (name) => files.find(f => f.startsWith(name + '.') && f.endsWith('.ttf')) || '';
 
 const fonts = {
   MaterialIcons:          get('MaterialIcons'),
@@ -23,12 +33,12 @@ const fonts = {
   FontAwesome:            files.find(f => /^FontAwesome\.[a-f0-9]+\.ttf$/.test(f)) || '',
 };
 
-Object.entries(fonts).forEach(([k,v]) => v ? console.log('✅',k,'->',v) : console.log('⚠ MISSING:',k));
+Object.entries(fonts).forEach(([k,v]) => v ? console.log('✅',k,'->','/fonts/'+v) : console.log('⚠ MISSING:',k));
 
 const css = Object.entries(fonts).filter(([,v])=>v).map(([family,file]) => `
   @font-face {
     font-family: '${family}';
-    src: url('${fontPath}${file}') format('truetype');
+    src: url('/fonts/${file}') format('truetype');
     font-display: block;
     font-weight: normal;
     font-style: normal;
@@ -38,7 +48,6 @@ const html = `<!DOCTYPE html>
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <meta httpEquiv="X-UA-Compatible" content="IE=edge" />
     <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
     <meta name="theme-color" content="#d32f2f" />
     <meta name="application-name" content="TSN" />
@@ -48,7 +57,6 @@ const html = `<!DOCTYPE html>
     <meta name="description" content="Taxi Safety Network - Emergency alert system for taxi drivers in Cameroon" />
     <meta name="mobile-web-app-capable" content="yes" />
     <link rel="manifest" href="/manifest.json" />
-    <link rel="apple-touch-icon" href="/favicon.ico" />
     <title>TSN - Taxi Safety Network</title>
     <style>
       ${css}
@@ -60,6 +68,7 @@ const html = `<!DOCTYPE html>
 </html>`;
 
 fs.writeFileSync(path.join(dist,'index.html'), html, 'utf8');
+console.log('\n✅ index.html patched - fonts load from /fonts/ (clean path)');
 
 const manifest = {
   name:'TSN - Taxi Safety Network', short_name:'TSN',
@@ -68,11 +77,9 @@ const manifest = {
   background_color:'#ffffff', theme_color:'#d32f2f',
   orientation:'portrait', scope:'/',
   icons:[
-    {src:'/favicon.ico',sizes:'64x64',  type:'image/x-icon',purpose:'any maskable'},
     {src:'/favicon.ico',sizes:'192x192',type:'image/x-icon',purpose:'any maskable'},
     {src:'/favicon.ico',sizes:'512x512',type:'image/x-icon',purpose:'any maskable'},
   ],
 };
 fs.writeFileSync(path.join(dist,'manifest.json'), JSON.stringify(manifest,null,2), 'utf8');
-console.log('\n✅ index.html patched with', Object.values(fonts).filter(Boolean).length, 'fonts');
-console.log('✅ manifest.json written — PWA install enabled');
+console.log('✅ manifest.json written');
