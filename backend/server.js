@@ -6,6 +6,7 @@ const cors      = require('cors');
 const bcrypt    = require('bcryptjs');
 const jwt       = require('jsonwebtoken');
 const mongoose  = require('mongoose');
+const { initSMS, broadcastSOS } = require('./smsHelper');
 
 const app    = express();
 const server = http.createServer(app);
@@ -239,7 +240,7 @@ app.post('/api/alerts/sos', async (req, res) => {
     io.emit('new-alert', alert);
     console.log('🚨 SOS:', alert.alertType, 'from', alert.driverId);
 
-    // Get all registered phone numbers for SMS notification list
+    // Get all registered phone numbers — EVERY driver and station, online or not
     const [allDrivers, allStations] = await Promise.all([
       Driver.find({}, 'fullName badgeId phoneNumber network').lean(),
       Station.find({}, 'stationName stationId emergencyLine').lean(),
@@ -250,11 +251,21 @@ app.post('/api/alerts/sos', async (req, res) => {
       ...allStations.filter(s => s.emergencyLine).map(s => s.emergencyLine),
     ];
 
-    // Return alert + phone list so app can SMS offline users
+    // Actually SEND real SMS via Africa's Talking to ALL of them right now
+    // This works regardless of whether the recipient's app/phone is online —
+    // it is a real SMS delivered to their network, like any text message.
+    let smsResult = { success: false, reason: 'SMS not sent' };
+    try {
+      smsResult = await broadcastSOS(alert.toObject(), phones);
+    } catch (smsErr) {
+      console.log('SMS broadcast failed (alert still saved):', smsErr.message);
+    }
+
     res.status(201).json({
       ...alert.toObject(),
-      notifyPhones: phones,
+      notifyPhones:  phones,
       totalNotified: phones.length,
+      smsBroadcast:  smsResult,
     });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -606,6 +617,7 @@ io.on('connection', (socket) => {
 
 // ── START SERVER ──────────────────────────────────────────────────────────────
 const PORT = process.env.PORT || 8000;
+initSMS(); // initialize Africa's Talking SMS — logs status to console
 server.listen(PORT, () => {
   console.log('\n🚕 TSN Backend running on http://localhost:' + PORT);
   console.log('🗄️  MongoDB: ' + (MONGODB_URI ? 'configured' : 'NOT SET'));
