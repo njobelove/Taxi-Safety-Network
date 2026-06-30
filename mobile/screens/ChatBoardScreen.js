@@ -56,6 +56,7 @@ export default function ChatBoardScreen({ nav, location }) {
   const scrollRef    = useRef(null);
   const recordingRef = useRef(null);
   const soundRef     = useRef(null);
+  const webAudioRef  = useRef(null);
   const timerRef     = useRef(null);
   const intervalRef  = useRef(null);
   const voiceStore   = useRef({});
@@ -206,8 +207,13 @@ export default function ChatBoardScreen({ nav, location }) {
 
     // Stop if already playing this one
     if (playingId === id) {
-      try { await soundRef.current?.stopAsync(); await soundRef.current?.unloadAsync(); } catch(e){}
-      soundRef.current = null;
+      if (Platform.OS === 'web' && webAudioRef.current) {
+        webAudioRef.current.pause();
+        webAudioRef.current = null;
+      } else {
+        try { await soundRef.current?.stopAsync(); await soundRef.current?.unloadAsync(); } catch(e){}
+        soundRef.current = null;
+      }
       setPlayingId(null);
       return;
     }
@@ -215,12 +221,38 @@ export default function ChatBoardScreen({ nav, location }) {
     if (!uri) { Alert.alert('No Voice', 'Voice note not available.'); return; }
     if (uri.startsWith('blob:')) { Alert.alert('Expired', 'This voice note expired. New ones are permanent.'); return; }
 
-    // Stop any current sound first
+    // Stop any current playback first
+    if (Platform.OS === 'web' && webAudioRef.current) {
+      webAudioRef.current.pause();
+      webAudioRef.current = null;
+    }
     try { await soundRef.current?.stopAsync(); await soundRef.current?.unloadAsync(); } catch(e){}
     soundRef.current = null;
 
+    // ── WEB: use native browser Audio element — more reliable codec support ──
+    if (Platform.OS === 'web') {
+      try {
+        const audioEl = new window.Audio(uri);
+        webAudioRef.current = audioEl;
+        setPlayingId(id);
+        audioEl.onended = () => { webAudioRef.current = null; setPlayingId(null); };
+        audioEl.onerror = (e) => {
+          console.log('Web audio error:', audioEl.error);
+          webAudioRef.current = null;
+          setPlayingId(null);
+          Alert.alert('Playback Error', 'Could not play this voice note. Code: ' + (audioEl.error?.code || 'unknown'));
+        };
+        await audioEl.play();
+      } catch (e) {
+        setPlayingId(null);
+        console.log('Web audio play error:', e.message);
+        Alert.alert('Cannot Play', e.message);
+      }
+      return;
+    }
+
+    // ── NATIVE (iOS/Android): use expo-av ──
     try {
-      // iOS REQUIRES audio mode be set before ANY sound operation
       await Audio.setAudioModeAsync({
         playsInSilentModeIOS:       true,
         allowsRecordingIOS:         false,
@@ -231,17 +263,11 @@ export default function ChatBoardScreen({ nav, location }) {
         playThroughEarpieceAndroid: false,
       });
 
-      setPlayingId(id); // Set playing state immediately (iOS needs this before async)
+      setPlayingId(id);
 
       const { sound } = await Audio.Sound.createAsync(
         { uri },
-        {
-          shouldPlay:    true,
-          volume:        1.0,
-          isMuted:       false,
-          isLooping:     false,
-          androidImplementation: 'MediaPlayer',
-        }
+        { shouldPlay: true, volume: 1.0, isMuted: false, isLooping: false }
       );
 
       soundRef.current = sound;
@@ -269,6 +295,45 @@ export default function ChatBoardScreen({ nav, location }) {
   const handleLike = async (id) => {
     setMessages(prev => prev.map(m => (m.id===id||m._id===id) ? {...m, likes:(m.likes||0)+1} : m));
     try { await fetch(BASE_URL + '/api/chat/messages/' + id + '/like', { method: 'POST' }); } catch (e) {}
+  };
+
+  const handleDeleteMessage = (msg) => {
+    const id = msg.id || msg._id;
+    if (msg.senderId !== myId) {
+      Alert.alert('Cannot Delete', 'You can only delete your own messages.');
+      return;
+    }
+    Alert.alert(
+      'Delete Message',
+      'Delete this message for everyone? This cannot be undone.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete for Everyone',
+          style: 'destructive',
+          onPress: async () => {
+            // Remove locally immediately
+            setMessages(prev => prev.filter(m => (m.id || m._id) !== id));
+            voiceStore.current[id] && delete voiceStore.current[id];
+            try {
+              await fetch(BASE_URL + '/api/chat/messages/' + id, {
+                method: 'DELETE',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ senderId: myId }),
+              });
+            } catch (e) {
+              console.log('Delete error:', e.message);
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  const handleLongPressMessage = (msg) => {
+    const id = msg.id || msg._id;
+    if (msg.senderId !== myId) return; // only allow long-press menu on own messages
+    handleDeleteMessage(msg);
   };
 
   return (
@@ -372,7 +437,12 @@ export default function ChatBoardScreen({ nav, location }) {
                           <Text style={s.nameId}>{isPolice ? '· Police' : '· ' + msg.senderId}</Text>
                         </View>
                       )}
-                      <View style={[s.bubble, isMe ? s.bMe : isPolice ? s.bPolice : s.bOther]}>
+                      <TouchableOpacity
+                        activeOpacity={isMe ? 0.7 : 1}
+                        onLongPress={() => isMe && handleLongPressMessage(msg)}
+                        delayLongPress={400}
+                        style={[s.bubble, isMe ? s.bMe : isPolice ? s.bPolice : s.bOther]}
+                      >
                         {msg.type === 'tip' && (
                           <View style={s.polBadge}>
                             <MaterialIcons name="verified" size={12} color="#90caf9" />
@@ -420,8 +490,11 @@ export default function ChatBoardScreen({ nav, location }) {
                               <Text style={{ fontSize: 11, color: '#666' }}>👍 {msg.likes}</Text>
                             </TouchableOpacity>
                           )}
+                          {isMe && (
+                            <Text style={{ fontSize: 9, color: 'rgba(255,255,255,0.4)', marginLeft: 6 }}>Hold to delete</Text>
+                          )}
                         </View>
-                      </View>
+                      </TouchableOpacity>
                     </View>
                     {isMe && (
                       <View style={s.aCol}>

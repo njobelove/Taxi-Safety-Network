@@ -442,6 +442,23 @@ app.post('/api/chat/messages/:id/like', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// ── DELETE FOR EVERYONE — only sender can delete their own message ──────────
+app.delete('/api/chat/messages/:id', async (req, res) => {
+  try {
+    const { senderId } = req.body;
+    const msg = await ChatMessage.findById(req.params.id);
+    if (!msg) return res.status(404).json({ error: 'Message not found' });
+
+    if (msg.senderId !== senderId) {
+      return res.status(403).json({ error: 'You can only delete your own messages' });
+    }
+
+    await ChatMessage.findByIdAndDelete(req.params.id);
+    io.emit('message-deleted', { id: req.params.id });
+    res.json({ success: true, id: req.params.id });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // ── SAFETY TIPS ───────────────────────────────────────────────────────────────
 app.get('/api/chat/tips', (req, res) => {
   res.json({ tips: [
