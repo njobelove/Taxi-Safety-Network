@@ -1,6 +1,7 @@
 /**
- * TSN Post-Build Script v2
- * Copies fonts to a clean /fonts/ path (avoids node_modules in URL which Vercel may ignore)
+ * TSN Post-Build Script v3
+ * Reads the EXISTING Expo-generated index.html (which has the <script> tag)
+ * and INJECTS font @font-face CSS into it, instead of replacing the whole file.
  */
 const fs   = require('fs');
 const path = require('path');
@@ -14,13 +15,11 @@ if (!fs.existsSync(srcFonts)) { console.error('No font assets in dist. Make sure
 
 // Create clean fonts folder (no node_modules in path)
 if (!fs.existsSync(destFonts)) fs.mkdirSync(destFonts, { recursive: true });
-
 const files = fs.readdirSync(srcFonts).filter(f => f.endsWith('.ttf'));
 files.forEach(f => fs.copyFileSync(path.join(srcFonts, f), path.join(destFonts, f)));
 console.log('Copied', files.length, 'fonts to dist/fonts/ (clean path)');
 
 const get = (name) => files.find(f => f.startsWith(name + '.') && f.endsWith('.ttf')) || '';
-
 const fonts = {
   MaterialIcons:          get('MaterialIcons'),
   Ionicons:               get('Ionicons'),
@@ -32,7 +31,6 @@ const fonts = {
   MaterialCommunityIcons: get('MaterialCommunityIcons'),
   FontAwesome:            files.find(f => /^FontAwesome\.[a-f0-9]+\.ttf$/.test(f)) || '',
 };
-
 Object.entries(fonts).forEach(([k,v]) => v ? console.log('✅',k,'->','/fonts/'+v) : console.log('⚠ MISSING:',k));
 
 const css = Object.entries(fonts).filter(([,v])=>v).map(([family,file]) => `
@@ -44,31 +42,31 @@ const css = Object.entries(fonts).filter(([,v])=>v).map(([family,file]) => `
     font-style: normal;
   }`).join('');
 
-const html = `<!DOCTYPE html>
-<html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
+// ── KEY FIX: read the REAL Expo-generated index.html, don't replace it ──
+const indexPath = path.join(dist, 'index.html');
+let html = fs.readFileSync(indexPath, 'utf8');
+
+if (!html.includes('<script')) {
+  console.error('⚠ WARNING: original index.html has no <script> tag! Build may have failed.');
+}
+
+// Inject font CSS + extra meta/manifest tags right before </head>
+const inject = `
     <meta name="theme-color" content="#d32f2f" />
     <meta name="application-name" content="TSN" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
-    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <meta name="apple-mobile-web-app-title" content="TSN" />
     <meta name="description" content="Taxi Safety Network - Emergency alert system for taxi drivers in Cameroon" />
-    <meta name="mobile-web-app-capable" content="yes" />
     <link rel="manifest" href="/manifest.json" />
-    <title>TSN - Taxi Safety Network</title>
-    <style>
-      ${css}
-      html, body, #root { width:100%; height:100%; margin:0; padding:0; background-color:#ffffff; overflow:hidden; }
-      #root { display:flex; flex:1; }
+    <style>${css}
+      html, body, #root { width:100%; height:100%; margin:0; padding:0; background-color:#ffffff; }
     </style>
-  </head>
-  <body><div id="root"></div></body>
-</html>`;
+  </head>`;
 
-fs.writeFileSync(path.join(dist,'index.html'), html, 'utf8');
-console.log('\n✅ index.html patched - fonts load from /fonts/ (clean path)');
+html = html.replace('</head>', inject);
+
+fs.writeFileSync(indexPath, html, 'utf8');
+console.log('\n✅ index.html patched IN PLACE - original <script> tag preserved');
 
 const manifest = {
   name:'TSN - Taxi Safety Network', short_name:'TSN',
