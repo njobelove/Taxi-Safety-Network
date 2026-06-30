@@ -330,12 +330,6 @@ export default function ChatBoardScreen({ nav, location }) {
     );
   };
 
-  const handleLongPressMessage = (msg) => {
-    const id = msg.id || msg._id;
-    if (msg.senderId !== myId) return; // only allow long-press menu on own messages
-    handleDeleteMessage(msg);
-  };
-
   return (
     <SafeAreaView style={s.safe}>
       <View style={s.header}>
@@ -437,12 +431,15 @@ export default function ChatBoardScreen({ nav, location }) {
                           <Text style={s.nameId}>{isPolice ? '· Police' : '· ' + msg.senderId}</Text>
                         </View>
                       )}
-                      <TouchableOpacity
-                        activeOpacity={isMe ? 0.7 : 1}
-                        onLongPress={() => isMe && handleLongPressMessage(msg)}
-                        delayLongPress={400}
-                        style={[s.bubble, isMe ? s.bMe : isPolice ? s.bPolice : s.bOther]}
-                      >
+                      <View style={[s.bubble, isMe ? s.bMe : isPolice ? s.bPolice : s.bOther]}>
+                        {isMe && (
+                          <TouchableOpacity
+                            style={s.deleteBtn}
+                            onPress={() => handleDeleteMessage(msg)}
+                          >
+                            <MaterialIcons name="delete-outline" size={14} color="rgba(255,255,255,0.6)" />
+                          </TouchableOpacity>
+                        )}
                         {msg.type === 'tip' && (
                           <View style={s.polBadge}>
                             <MaterialIcons name="verified" size={12} color="#90caf9" />
@@ -490,11 +487,8 @@ export default function ChatBoardScreen({ nav, location }) {
                               <Text style={{ fontSize: 11, color: '#666' }}>👍 {msg.likes}</Text>
                             </TouchableOpacity>
                           )}
-                          {isMe && (
-                            <Text style={{ fontSize: 9, color: 'rgba(255,255,255,0.4)', marginLeft: 6 }}>Hold to delete</Text>
-                          )}
                         </View>
-                      </TouchableOpacity>
+                      </View>
                     </View>
                     {isMe && (
                       <View style={s.aCol}>
@@ -647,6 +641,7 @@ const s = StyleSheet.create({
   bMe:       { backgroundColor: '#1a3d1a', borderBottomRightRadius: 4 },
   bPolice:   { backgroundColor: '#0d1b4a', borderBottomLeftRadius: 4 },
   bOther:    { backgroundColor: '#1e1e1e', borderBottomLeftRadius: 4 },
+  deleteBtn: { position: 'absolute', top: -4, right: -4, width: 22, height: 22, borderRadius: 11, backgroundColor: '#333', alignItems: 'center', justifyContent: 'center', zIndex: 10, elevation: 3 },
   polBadge:  { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: 'rgba(144,202,249,0.15)', borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3, marginBottom: 6, alignSelf: 'flex-start' },
   polBadgeTxt: { fontSize: 10, fontWeight: '800', color: '#90caf9' },
   msgTxt:    { fontSize: 14, color: '#f0f0f0', lineHeight: 20 },
