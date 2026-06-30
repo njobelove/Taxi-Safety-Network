@@ -127,7 +127,11 @@ export class AudioRecorder {
     this.mediaRecorder.ondataavailable = (e) => {
       if (e.data.size > 0) this.chunks.push(e.data);
     };
-    this.mediaRecorder.start(100); // collect data every 100ms
+    // IMPORTANT: no timeslice argument — this ensures ondataavailable fires
+    // ONCE with the complete, valid recording when stop() is called.
+    // Using start(100) produces fragmented WebM chunks that cannot be
+    // concatenated into a playable file (causes DEMUXER_ERROR_COULD_NOT_OPEN).
+    this.mediaRecorder.start();
     this.isRecording = true;
     return true;
   }
@@ -169,7 +173,8 @@ export class AudioRecorder {
       if (!this.mediaRecorder) { resolve(null); return; }
 
       this.mediaRecorder.onstop = async () => {
-        const blob   = new Blob(this.chunks, { type: this.mediaRecorder.mimeType });
+        const blob = new Blob(this.chunks, { type: this.mediaRecorder.mimeType });
+        console.log('Recorded blob size:', blob.size, 'type:', blob.type, 'chunks:', this.chunks.length);
         const base64 = await this._blobToBase64(blob);
         // Stop all tracks
         this.mediaRecorder.stream.getTracks().forEach(t => t.stop());
@@ -177,6 +182,9 @@ export class AudioRecorder {
         this.chunks        = [];
         resolve(base64);
       };
+      // requestData() flushes any pending data into ondataavailable
+      // before stop() finalizes the recording — ensures complete container
+      try { this.mediaRecorder.requestData(); } catch (e) {}
       this.mediaRecorder.stop();
     });
   }
