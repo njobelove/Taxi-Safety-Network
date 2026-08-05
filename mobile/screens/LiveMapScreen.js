@@ -1,214 +1,264 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, SafeAreaView, ActivityIndicator, Alert, Linking, ScrollView } from 'react-native';
-import { MaterialIcons, Ionicons } from '@expo/vector-icons';
+import {
+  View, Text, StyleSheet, TouchableOpacity,
+  SafeAreaView, Alert, ActivityIndicator, ScrollView,
+} from 'react-native';
+import { MaterialIcons } from '@expo/vector-icons';
 import { useAuth } from '../services/AuthContext';
 
-const RED=('#d32f2f'),BLUE=('#1565C0'),GREEN=('#2e7d32'),GOLD=('#f5c518');
-const BASE_URL=typeof window!=='undefined'&&window.location.hostname!=='localhost'?'https://tsn-backend-53yj.onrender.com':'http://localhost:8000';
+const RED   = '#d32f2f';
+const BLUE  = '#1565C0';
+const GREEN = '#2e7d32';
+const GOLD  = '#f5c518';
 
-function getDistance(lat1,lng1,lat2,lng2){const R=6371,dLat=(lat2-lat1)*Math.PI/180,dLng=(lng2-lng1)*Math.PI/180,a=Math.sin(dLat/2)**2+Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLng/2)**2;return R*2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a));}
+const BASE_URL = typeof window !== 'undefined' && window.location.hostname !== 'localhost'
+  ? 'https://tsn-backend-53yj.onrender.com' : 'http://localhost:8000';
 
-export default function LiveMapScreen({nav,location}){
-  const {user,role}=useAuth();
-  const [drivers,setDrivers]=useState([]);
-  const [loading,setLoading]=useState(true);
-  const [sharing,setSharing]=useState(false);
-  const [lastUpdate,setLastUpdate]=useState(null);
-  const intervalRef=useRef(null);
-  const shareRef=useRef(null);
+export default function LiveMapScreen({ nav, location }) {
+  const { user, role } = useAuth();
+  const [drivers,   setDrivers]   = useState([]);
+  const [alerts,    setAlerts]    = useState([]);
+  const [loading,   setLoading]   = useState(true);
+  const [cached,    setCached]    = useState(false);
+  const [lastUpdate,setLastUpdate]= useState(null);
+  const [isOnline,  setIsOnline]  = useState(true);
+  const isDriver = role === 'driver';
+  const mapRef   = useRef(null);
 
-  useEffect(()=>{
-    loadDrivers();
-    intervalRef.current=setInterval(loadDrivers,10000);
-    return()=>{clearInterval(intervalRef.current);clearInterval(shareRef.current);};
-  },[]);
+  useEffect(() => {
+    checkOnline();
+    loadData();
+    const iv = setInterval(loadData, 15000);
+    window.addEventListener?.('online',  () => setIsOnline(true));
+    window.addEventListener?.('offline', () => setIsOnline(false));
+    return () => {
+      clearInterval(iv);
+      window.removeEventListener?.('online',  () => setIsOnline(true));
+      window.removeEventListener?.('offline', () => setIsOnline(false));
+    };
+  }, []);
 
-  useEffect(()=>{
-    if(sharing&&location){
-      shareLiveLocation();
-      shareRef.current=setInterval(()=>{if(location)shareLiveLocation();},5000);
-    }else{clearInterval(shareRef.current);}
-    return()=>clearInterval(shareRef.current);
-  },[sharing,location]);
-
-  const loadDrivers=async()=>{
-    try{const r=await fetch(BASE_URL+'/api/drivers/live');const d=await r.json();setDrivers(d.drivers||[]);setLastUpdate(new Date().toLocaleTimeString());}
-    catch(e){console.log('Load drivers error:',e.message);}
-    finally{setLoading(false);}
+  const checkOnline = () => {
+    setIsOnline(typeof navigator !== 'undefined' ? navigator.onLine : true);
   };
 
-  const shareLiveLocation=async()=>{
-    if(!location||!user)return;
-    try{await fetch(BASE_URL+'/api/drivers/live-location',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({driverId:user?.badgeId||user?.stationId||'unknown',driverName:user?.fullName||user?.stationName||'Unknown',lat:location.latitude,lng:location.longitude,speed:location.speed||0,heading:location.heading||0,vehiclePlate:user?.vehiclePlate||'',network:user?.network||'MTN'})});}
-    catch(e){}
+  const loadData = async () => {
+    try {
+      const [driversRes, alertsRes] = await Promise.all([
+        fetch(BASE_URL + '/api/drivers/live'),
+        fetch(BASE_URL + '/api/alerts'),
+      ]);
+      const driversData = await driversRes.json();
+      const alertsData  = await alertsRes.json();
+      const d = driversData.drivers || [];
+      const a = alertsData.alerts   || [];
+      setDrivers(d);
+      setAlerts(a.filter(x => x.status !== 'resolved'));
+      setLastUpdate(new Date());
+      setIsOnline(true);
+      // Cache to localStorage for offline use
+      try {
+        localStorage.setItem('tsn_cached_drivers', JSON.stringify(d));
+        localStorage.setItem('tsn_cached_alerts',  JSON.stringify(a));
+        localStorage.setItem('tsn_cache_time',     Date.now().toString());
+        setCached(true);
+      } catch(e) {}
+    } catch (e) {
+      setIsOnline(false);
+      // Load from cache
+      try {
+        const cd = localStorage.getItem('tsn_cached_drivers');
+        const ca = localStorage.getItem('tsn_cached_alerts');
+        const ct = localStorage.getItem('tsn_cache_time');
+        if (cd) setDrivers(JSON.parse(cd));
+        if (ca) setAlerts(JSON.parse(ca).filter(x => x.status !== 'resolved'));
+        if (ct) setLastUpdate(new Date(parseInt(ct)));
+        setCached(true);
+      } catch(e2) {}
+    } finally { setLoading(false); }
   };
 
-  const toggleSharing=()=>{
-    if(!sharing){setSharing(true);Alert.alert('Location Sharing ON','Your live location is now visible to all TSN drivers and police stations.');}
-    else{setSharing(false);Alert.alert('Location Sharing OFF','Your location is no longer being shared.');}
+  const fmt = ts => {
+    if (!ts) return '';
+    const d = Math.floor((Date.now() - new Date(ts)) / 60000);
+    if (d < 1) return 'Just now';
+    if (d < 60) return d + 'm ago';
+    return Math.floor(d/60) + 'h ago';
   };
 
-  const activeDrivers=drivers.filter(d=>d.active!==false);
-  const myId=user?.badgeId||user?.stationId;
+  const openInMaps = (lat, lng, label) => {
+    const url = `https://www.google.com/maps?q=${lat},${lng}&z=15&label=${encodeURIComponent(label)}`;
+    if (typeof window !== 'undefined') window.open(url, '_blank');
+  };
 
-  return(
+  const myLat = location?.latitude  || 3.848;
+  const myLng = location?.longitude || 11.502;
+
+  return (
     <SafeAreaView style={s.safe}>
       <View style={s.header}>
-        <TouchableOpacity onPress={()=>nav(role==='police'?'policeDashboard':'driverDashboard')}>
-          <MaterialIcons name="arrow-back" size={24} color={RED}/>
+        <TouchableOpacity onPress={() => nav(isDriver ? 'driverDashboard' : 'policeDashboard')}>
+          <MaterialIcons name="arrow-back" size={24} color={RED} />
         </TouchableOpacity>
-        <View style={{flex:1,marginLeft:10}}>
-          <Text style={s.headerTitle}>LIVE DRIVER MAP</Text>
-          <Text style={s.headerSub}>{activeDrivers.length} drivers online · Updated {lastUpdate||'—'}</Text>
+        <View style={{ flex: 1, marginLeft: 12 }}>
+          <Text style={s.headerTitle}>LIVE MAP</Text>
+          <Text style={s.headerSub}>
+            {isOnline ? '🟢 Live' : '🔴 Offline — showing cached data'}
+            {lastUpdate ? '  ·  Updated ' + fmt(lastUpdate) : ''}
+          </Text>
         </View>
-        <TouchableOpacity onPress={loadDrivers}>
-          <MaterialIcons name="refresh" size={24} color={GREEN}/>
+        <TouchableOpacity onPress={loadData} style={s.refreshBtn}>
+          <MaterialIcons name="refresh" size={22} color={GREEN} />
         </TouchableOpacity>
       </View>
 
-      {/* Share toggle */}
-      <TouchableOpacity style={[s.shareBanner,{backgroundColor:sharing?GREEN:'#333'}]} onPress={toggleSharing}>
-        <MaterialIcons name={sharing?'location-on':'location-off'} size={18} color="#fff"/>
-        <Text style={s.shareTxt}>
-          {sharing?'YOUR LOCATION IS BEING SHARED LIVE — Tap to stop':'TAP TO SHARE YOUR LIVE LOCATION with all TSN drivers'}
-        </Text>
-        <MaterialIcons name={sharing?'toggle-on':'toggle-off'} size={24} color="#fff"/>
-      </TouchableOpacity>
-
-      {/* My location */}
-      {location&&(
-        <View style={s.myLocCard}>
-          <View style={{flex:1}}>
-            <View style={{flexDirection:'row',alignItems:'center',gap:6,marginBottom:4}}>
-              <MaterialIcons name="gps-fixed" size={14} color={GREEN}/>
-              <Text style={s.myLocTitle}>MY CURRENT LOCATION</Text>
-            </View>
-            <Text style={s.myLocCoords}>{location.latitude.toFixed(5)}° N,  {location.longitude.toFixed(5)}° E</Text>
-            <View style={{flexDirection:'row',alignItems:'center',gap:4,marginTop:4}}>
-              <MaterialIcons name={sharing?'wifi-tethering':'wifi-tethering-off'} size={12} color={sharing?GREEN:'#666'}/>
-              <Text style={{fontSize:10,color:sharing?GREEN:'#666'}}>Accuracy: ±{Math.round(location.accuracy||10)}m · {sharing?'SHARING LIVE':'NOT SHARING'}</Text>
-            </View>
+      {/* Map iframe - uses Google Maps embed */}
+      <View style={s.mapContainer}>
+        {loading ? (
+          <View style={s.mapLoading}>
+            <ActivityIndicator size="large" color={RED} />
+            <Text style={{ color: '#888', marginTop: 12 }}>Loading map...</Text>
           </View>
-          <TouchableOpacity
-            style={s.openMapsBtn}
-            onPress={()=>Linking.openURL('https://www.google.com/maps?q='+location.latitude+','+location.longitude+'&z=16')}
-          >
-            <MaterialIcons name="open-in-new" size={16} color="#fff"/>
-            <Text style={s.openMapsTxt}>Maps</Text>
-          </TouchableOpacity>
-        </View>
-      )}
-
-      <TouchableOpacity style={s.fullMapBtn} onPress={()=>location&&Linking.openURL('https://www.google.com/maps/@'+location.latitude+','+location.longitude+',14z')}>
-        <MaterialIcons name="map" size={18} color="#fff"/>
-        <Text style={s.fullMapBtnTxt}>OPEN FULL LIVE MAP IN GOOGLE MAPS</Text>
-        <MaterialIcons name="open-in-new" size={16} color="#fff"/>
-      </TouchableOpacity>
-
-      <ScrollView style={s.driverList} showsVerticalScrollIndicator={false}>
-        <View style={{flexDirection:'row',alignItems:'center',gap:6,marginBottom:10,marginTop:4}}>
-          <MaterialIcons name="directions-car" size={16} color="#888"/>
-          <Text style={s.sectionTitle}>LIVE DRIVERS ({activeDrivers.length})</Text>
-        </View>
-
-        {loading?(
-          <View style={{alignItems:'center',padding:40}}><ActivityIndicator size="large" color={RED}/></View>
-        ):activeDrivers.length===0?(
-          <View style={s.emptyBox}>
-            <MaterialIcons name="directions-car" size={48} color="#333"/>
-            <Text style={s.emptyTxt}>No drivers sharing location</Text>
-            <Text style={s.emptySub}>Enable location sharing above to appear on the map</Text>
-          </View>
-        ):(
-          activeDrivers.map((driver)=>{
-            const isMe=driver.driverId===myId;
-            const dist=location?getDistance(location.latitude,location.longitude,driver.lat,driver.lng):null;
-            return(
-              <View key={driver.driverId} style={[s.driverCard,isMe&&s.driverCardMe]}>
-                <View style={[s.driverStatus,{backgroundColor:isMe?GOLD:GREEN}]}/>
-                <View style={s.driverInfo}>
-                  <View style={{flexDirection:'row',alignItems:'center',gap:8,marginBottom:4}}>
-                    <MaterialIcons name={isMe?'person':'directions-car'} size={16} color={isMe?GOLD:GREEN}/>
-                    <Text style={s.driverName}>{isMe?'YOU — ':''}{driver.driverName}</Text>
-                    {isMe&&<View style={s.meBadge}><Text style={s.meBadgeTxt}>ME</Text></View>}
-                  </View>
-                  <Text style={s.driverId}>{driver.driverId}</Text>
-                  {driver.vehiclePlate&&<Text style={s.driverPlate}>{driver.vehiclePlate}</Text>}
-                  <View style={{flexDirection:'row',alignItems:'center',gap:4}}>
-                    <MaterialIcons name="location-on" size={12} color={GREEN}/>
-                    <Text style={s.driverCoords}>{driver.lat?.toFixed(4)}° N, {driver.lng?.toFixed(4)}° E</Text>
-                  </View>
-                  {dist!==null&&(
-                    <View style={{flexDirection:'row',alignItems:'center',gap:4}}>
-                      <MaterialIcons name="social-distance" size={12} color={BLUE}/>
-                      <Text style={s.driverDist}>{dist<1?Math.round(dist*1000)+'m':dist.toFixed(1)+'km'} away</Text>
-                    </View>
-                  )}
-                  <View style={{flexDirection:'row',alignItems:'center',gap:4,marginTop:2}}>
-                    <MaterialIcons name="access-time" size={11} color="#666"/>
-                    <Text style={s.driverTime}>Last seen: {new Date(driver.lastSeen).toLocaleTimeString()}</Text>
-                    {driver.speed>0&&<><MaterialIcons name="speed" size={11} color="#666"/><Text style={s.driverTime}>{Math.round(driver.speed)}km/h</Text></>}
-                  </View>
-                </View>
-                <TouchableOpacity style={s.mapPin} onPress={()=>Linking.openURL('https://www.google.com/maps?q='+driver.lat+','+driver.lng)}>
-                  <MaterialIcons name="open-in-new" size={18} color="#fff"/>
-                  <Text style={s.mapPinTxt}>View</Text>
-                </TouchableOpacity>
-              </View>
-            );
-          })
+        ) : (
+          <iframe
+            ref={mapRef}
+            style={{ width: '100%', height: '100%', border: 'none' }}
+            src={`https://www.google.com/maps/embed/v1/view?key=AIzaSyB9iv8Zj-6kBVmHME1JQ3rrbWaRfQGjcGw&center=${myLat},${myLng}&zoom=13&maptype=roadmap`}
+            allowFullScreen
+          />
         )}
-        <View style={{height:30}}/>
-      </ScrollView>
 
-      <View style={s.nav}>
-        {(role==='driver'?[{icon:'dashboard',lbl:'DASHBOARD',to:'driverDashboard'},{icon:'warning',lbl:'ALERTS',to:'emergency'},{icon:'map',lbl:'MAP',to:'liveMap'},{icon:'chat',lbl:'CHAT',to:'chatBoard'}]:[{icon:'dashboard',lbl:'DASHBOARD',to:'policeDashboard'},{icon:'warning',lbl:'ALERTS',to:'policeDashboard'},{icon:'map',lbl:'MAP',to:'liveMap'},{icon:'chat',lbl:'CHAT',to:'chatBoard'}]).map(({icon,lbl,to})=>(
-          <TouchableOpacity key={lbl} style={lbl==='MAP'?s.navActive:s.navItem} onPress={()=>nav(to)}>
-            <MaterialIcons name={icon} size={22} color={lbl==='MAP'?'#fff':'#666'}/>
-            <Text style={lbl==='MAP'?s.navTxtA:s.navTxt}>{lbl}</Text>
-          </TouchableOpacity>
+        {/* Alert pins overlay */}
+        {alerts.length > 0 && (
+          <View style={s.alertOverlay}>
+            <MaterialIcons name="warning" size={14} color={RED} />
+            <Text style={s.alertOverlayTxt}>{alerts.length} ACTIVE ALERT{alerts.length > 1 ? 'S' : ''}</Text>
+          </View>
+        )}
+
+        {/* Offline badge */}
+        {!isOnline && (
+          <View style={s.offlineBadge}>
+            <MaterialIcons name="wifi-off" size={14} color="#fff" />
+            <Text style={s.offlineBadgeTxt}>OFFLINE — Cached Map</Text>
+          </View>
+        )}
+      </View>
+
+      {/* Stats bar */}
+      <View style={s.statsBar}>
+        {[
+          [drivers.length, 'DRIVERS', BLUE,  'directions-car'],
+          [alerts.length,  'ALERTS',  RED,   'warning'       ],
+          [cached ? 1 : 0, 'CACHED',  GREEN, 'save'          ],
+        ].map(([num, lbl, col, icon]) => (
+          <View key={lbl} style={s.statItem}>
+            <MaterialIcons name={icon} size={16} color={col} />
+            <Text style={[s.statNum, { color: col }]}>{num}</Text>
+            <Text style={s.statLbl}>{lbl}</Text>
+          </View>
         ))}
       </View>
+
+      {/* Driver + alert list */}
+      <ScrollView showsVerticalScrollIndicator={false} style={{ flex: 1 }}>
+        {alerts.length > 0 && (
+          <View style={s.section}>
+            <Text style={s.sectionTitle}>🚨 ACTIVE ALERTS</Text>
+            {alerts.map(a => (
+              <TouchableOpacity
+                key={a._id || a.id}
+                style={s.alertCard}
+                onPress={() => a.location?.lat && openInMaps(a.location.lat, a.location.lng, a.driverName + ' SOS')}
+              >
+                <View style={[s.alertDot, { backgroundColor: RED }]} />
+                <View style={{ flex: 1 }}>
+                  <Text style={s.alertName}>{a.driverName} — {(a.alertType||'SOS').toUpperCase()}</Text>
+                  <Text style={s.alertLoc}>{a.location?.address || 'Location unavailable'}</Text>
+                  <Text style={s.alertTime}>{fmt(a.createdAt)}</Text>
+                </View>
+                <MaterialIcons name="open-in-new" size={18} color={BLUE} />
+              </TouchableOpacity>
+            ))}
+          </View>
+        )}
+
+        {drivers.length > 0 && (
+          <View style={s.section}>
+            <Text style={s.sectionTitle}>🚖 ACTIVE DRIVERS</Text>
+            {drivers.map((d, i) => (
+              <TouchableOpacity
+                key={d.badgeId || i}
+                style={s.driverCard}
+                onPress={() => d.lat && openInMaps(d.lat, d.lng, d.badgeId)}
+              >
+                <View style={[s.driverDot, { backgroundColor: GREEN }]} />
+                <View style={{ flex: 1 }}>
+                  <Text style={s.driverName}>{d.badgeId}</Text>
+                  <Text style={s.driverLoc}>
+                    {d.lat ? parseFloat(d.lat).toFixed(4) + '° N, ' + parseFloat(d.lng).toFixed(4) + '° E' : 'No location'}
+                  </Text>
+                </View>
+                <MaterialIcons name="open-in-new" size={18} color={BLUE} />
+              </TouchableOpacity>
+            ))}
+          </View>
+        )}
+
+        {drivers.length === 0 && alerts.length === 0 && (
+          <View style={s.emptyBox}>
+            <MaterialIcons name="map" size={52} color="#555" />
+            <Text style={s.emptyTxt}>No active drivers or alerts</Text>
+            <Text style={s.emptySub}>Map data will appear here when drivers are online</Text>
+          </View>
+        )}
+        <View style={{ height: 20 }} />
+      </ScrollView>
+
+      {/* My location button */}
+      {location && (
+        <TouchableOpacity
+          style={s.myLocBtn}
+          onPress={() => openInMaps(myLat, myLng, 'My Location')}
+        >
+          <MaterialIcons name="my-location" size={22} color="#fff" />
+          <Text style={s.myLocTxt}>MY LOCATION</Text>
+        </TouchableOpacity>
+      )}
     </SafeAreaView>
   );
 }
 
-const s=StyleSheet.create({
-  safe:{flex:1,backgroundColor:'#0d0d0d'},
-  header:{flexDirection:'row',alignItems:'center',paddingHorizontal:16,paddingVertical:14,backgroundColor:'#111',borderBottomWidth:1,borderBottomColor:'#222'},
-  headerTitle:{fontSize:16,fontWeight:'800',color:'#fff'},
-  headerSub:{fontSize:10,color:'#888',marginTop:1},
-  shareBanner:{flexDirection:'row',alignItems:'center',paddingHorizontal:16,paddingVertical:14,gap:10},
-  shareTxt:{flex:1,fontSize:12,fontWeight:'700',color:'#fff'},
-  myLocCard:{flexDirection:'row',alignItems:'center',backgroundColor:'#111',margin:12,borderRadius:14,padding:14,borderWidth:1,borderColor:'#222'},
-  myLocTitle:{fontSize:11,fontWeight:'800',color:GREEN},
-  myLocCoords:{fontSize:13,fontWeight:'900',color:'#fff',fontFamily:'monospace'},
-  openMapsBtn:{backgroundColor:BLUE,borderRadius:12,padding:12,alignItems:'center',marginLeft:12,flexDirection:'row',gap:4},
-  openMapsTxt:{fontSize:10,color:'#fff',fontWeight:'700'},
-  fullMapBtn:{flexDirection:'row',alignItems:'center',justifyContent:'center',gap:8,backgroundColor:BLUE,marginHorizontal:12,marginBottom:8,borderRadius:12,paddingVertical:13},
-  fullMapBtnTxt:{fontSize:12,fontWeight:'800',color:'#fff'},
-  driverList:{flex:1,paddingHorizontal:12},
-  sectionTitle:{fontSize:12,fontWeight:'800',color:'#888'},
-  emptyBox:{alignItems:'center',paddingVertical:50,gap:10},
-  emptyTxt:{fontSize:16,fontWeight:'700',color:'#555'},
-  emptySub:{fontSize:12,color:'#444',textAlign:'center'},
-  driverCard:{backgroundColor:'#111',borderRadius:14,padding:14,marginBottom:10,flexDirection:'row',alignItems:'flex-start',borderWidth:1,borderColor:'#222'},
-  driverCardMe:{borderColor:GOLD,backgroundColor:'#1a1500'},
-  driverStatus:{width:10,height:10,borderRadius:5,marginTop:4,marginRight:12},
-  driverInfo:{flex:1},
-  driverName:{fontSize:14,fontWeight:'800',color:'#fff'},
-  meBadge:{backgroundColor:GOLD,borderRadius:6,paddingHorizontal:8,paddingVertical:2},
-  meBadgeTxt:{fontSize:9,fontWeight:'900',color:'#111'},
-  driverId:{fontSize:11,color:'#888',marginBottom:2},
-  driverPlate:{fontSize:11,color:'#aaa',marginBottom:2},
-  driverCoords:{fontSize:11,color:GREEN,fontFamily:'monospace'},
-  driverDist:{fontSize:11,color:BLUE,fontWeight:'700'},
-  driverTime:{fontSize:10,color:'#666'},
-  mapPin:{backgroundColor:BLUE,borderRadius:10,padding:10,alignItems:'center',marginLeft:10,gap:4},
-  mapPinTxt:{fontSize:9,color:'#fff',fontWeight:'700'},
-  nav:{flexDirection:'row',backgroundColor:'#111',borderTopWidth:1,borderTopColor:'#222',paddingVertical:10},
-  navActive:{flex:1,alignItems:'center',backgroundColor:RED,borderRadius:12,paddingVertical:6,marginHorizontal:4},
-  navItem:{flex:1,alignItems:'center',paddingVertical:6},
-  navTxtA:{fontSize:9,color:'#fff',marginTop:2,fontWeight:'700'},
-  navTxt:{fontSize:9,color:'#666',marginTop:2},
+const s = StyleSheet.create({
+  safe:            { flex: 1, backgroundColor: '#f5f5f5' },
+  header:          { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12, backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#eee' },
+  headerTitle:     { fontSize: 15, fontWeight: '900', color: '#111' },
+  headerSub:       { fontSize: 10, color: '#888', marginTop: 1 },
+  refreshBtn:      { width: 36, height: 36, borderRadius: 18, backgroundColor: '#f0f0f0', alignItems: 'center', justifyContent: 'center' },
+  mapContainer:    { height: 300, backgroundColor: '#e0e0e0', position: 'relative' },
+  mapLoading:      { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  alertOverlay:    { position: 'absolute', top: 10, left: 10, backgroundColor: RED, borderRadius: 10, paddingHorizontal: 10, paddingVertical: 6, flexDirection: 'row', alignItems: 'center', gap: 4 },
+  alertOverlayTxt: { color: '#fff', fontSize: 11, fontWeight: '800' },
+  offlineBadge:    { position: 'absolute', bottom: 10, right: 10, backgroundColor: '#333', borderRadius: 10, paddingHorizontal: 10, paddingVertical: 6, flexDirection: 'row', alignItems: 'center', gap: 4 },
+  offlineBadgeTxt: { color: '#fff', fontSize: 11, fontWeight: '700' },
+  statsBar:        { flexDirection: 'row', backgroundColor: '#fff', paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: '#eee' },
+  statItem:        { flex: 1, alignItems: 'center', gap: 2 },
+  statNum:         { fontSize: 20, fontWeight: '900' },
+  statLbl:         { fontSize: 9, color: '#888', fontWeight: '600' },
+  section:         { marginHorizontal: 14, marginTop: 12 },
+  sectionTitle:    { fontSize: 11, fontWeight: '800', color: '#888', marginBottom: 8, letterSpacing: 0.5 },
+  alertCard:       { flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff', borderRadius: 12, padding: 12, marginBottom: 8, borderLeftWidth: 3, borderLeftColor: RED, elevation: 1, gap: 10 },
+  alertDot:        { width: 10, height: 10, borderRadius: 5 },
+  alertName:       { fontSize: 13, fontWeight: '800', color: '#111' },
+  alertLoc:        { fontSize: 11, color: '#666', marginTop: 2 },
+  alertTime:       { fontSize: 10, color: '#aaa', marginTop: 2 },
+  driverCard:      { flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff', borderRadius: 12, padding: 12, marginBottom: 8, borderLeftWidth: 3, borderLeftColor: GREEN, elevation: 1, gap: 10 },
+  driverDot:       { width: 10, height: 10, borderRadius: 5 },
+  driverName:      { fontSize: 13, fontWeight: '800', color: '#111' },
+  driverLoc:       { fontSize: 11, color: '#666', marginTop: 2 },
+  emptyBox:        { alignItems: 'center', paddingVertical: 60, gap: 8 },
+  emptyTxt:        { fontSize: 16, fontWeight: '700', color: '#555' },
+  emptySub:        { fontSize: 12, color: '#888', textAlign: 'center' },
+  myLocBtn:        { position: 'absolute', bottom: 20, right: 20, backgroundColor: BLUE, borderRadius: 14, paddingVertical: 12, paddingHorizontal: 16, flexDirection: 'row', alignItems: 'center', gap: 6, elevation: 8 },
+  myLocTxt:        { fontSize: 13, fontWeight: '800', color: '#fff' },
 });

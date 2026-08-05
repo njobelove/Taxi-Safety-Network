@@ -117,7 +117,30 @@ mongoose.connection.once('open', seedChat);
 let liveDrivers = {};
 
 // ── HEALTH ────────────────────────────────────────────────────────────────────
-// ── TEST SMS — send to ONE specific number (for demos/testing) ──────────────
+// ── ALERT RATING ─────────────────────────────────────────────────────────────
+app.post('/api/alerts/:id/rate', async (req, res) => {
+  try {
+    const { rating, genuine, notes } = req.body;
+    const alert = await Alert.findById(req.params.id);
+    if (!alert) return res.status(404).json({ error: 'Alert not found' });
+
+    // Update credibility score of the driver
+    const scoreChange = genuine ? 10 : -20;
+    await Driver.findOneAndUpdate(
+      { badgeId: alert.driverId },
+      { $inc: { credibilityScore: scoreChange } }
+    );
+
+    // Save rating on the alert
+    await Alert.findByIdAndUpdate(req.params.id, {
+      rating, genuine, ratingNotes: notes, ratedAt: new Date(),
+    });
+
+    console.log(`⭐ Alert ${req.params.id} rated: ${rating} stars, genuine: ${genuine}`);
+    res.json({ success: true, scoreChange });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 app.post('/api/sms/test', async (req, res) => {
   try {
     const { phone, message } = req.body;
@@ -271,13 +294,36 @@ app.post('/api/alerts/sos', async (req, res) => {
     ];
 
     // Actually SEND real SMS via Africa's Talking to ALL of them right now
-    // This works regardless of whether the recipient's app/phone is online —
-    // it is a real SMS delivered to their network, like any text message.
     let smsResult = { success: false, reason: 'SMS not sent' };
     try {
       smsResult = await broadcastSOS(alert.toObject(), phones);
     } catch (smsErr) {
       console.log('SMS broadcast failed (alert still saved):', smsErr.message);
+    }
+
+    // Send push notifications to all registered devices
+    try {
+      const pushTokens   = await PushToken.find({});
+      const pushMessages = pushTokens
+        .filter(t => t.token && t.token.startsWith('ExponentPushToken'))
+        .map(t => ({
+          to:       t.token,
+          sound:    'default',
+          title:    '🚨 SOS ALERT — ' + (alert.alertType || 'EMERGENCY').toUpperCase(),
+          body:     (alert.driverName || 'Unknown') + ' needs help at ' + (alert.location?.address || 'unknown location'),
+          data:     { alertId: alert._id, type: 'sos' },
+          priority: 'high',
+        }));
+      if (pushMessages.length > 0) {
+        fetch('https://exp.host/--/api/v2/push/send', {
+          method:  'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body:    JSON.stringify(pushMessages),
+        }).then(() => console.log('📱 Push sent to', pushMessages.length, 'devices'))
+          .catch(e => console.log('Push error:', e.message));
+      }
+    } catch (pushErr) {
+      console.log('Push failed (non-critical):', pushErr.message);
     }
 
     res.status(201).json({

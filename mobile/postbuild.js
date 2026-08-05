@@ -118,8 +118,17 @@ const inject = `
     <meta name="theme-color" content="#d32f2f" />
     <meta name="application-name" content="TSN" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
-    <meta name="apple-mobile-web-app-title" content="TSN" />
-    <meta name="description" content="Taxi Safety Network - Emergency alert system for taxi drivers in Cameroon" />
+    <meta name="apple-mobile-web-app-title" content="TSN Safety" />
+    <meta name="description" content="TSN - Taxi Safety Network. Emergency SOS alert system for taxi drivers in Cameroon. Panic button, police notification, SMS broadcast." />
+    <meta name="keywords" content="taxi safety cameroon, emergency alert, SOS, panic button, police notification, yaoundé, douala" />
+    <meta name="author" content="TSN Cameroon" />
+    <meta property="og:title" content="TSN - Taxi Safety Network" />
+    <meta property="og:description" content="Emergency SOS alert system for taxi drivers in Cameroon" />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://taxi-safety-network.vercel.app" />
+    <meta name="twitter:card" content="summary" />
+    <meta name="twitter:title" content="TSN - Taxi Safety Network" />
+    <meta name="twitter:description" content="Emergency SOS alert for taxi drivers in Cameroon" />
     <link rel="manifest" href="/manifest.json" />
     <style>${css}
       html, body, #root { width:100%; height:100%; margin:0; padding:0; background-color:#ffffff; }
@@ -132,14 +141,25 @@ fs.writeFileSync(indexPath, html, 'utf8');
 console.log('\n✅ index.html patched IN PLACE - original <script> tag preserved');
 
 const manifest = {
-  name:'TSN - Taxi Safety Network', short_name:'TSN',
-  description:'Emergency alert system for taxi drivers in Cameroon',
-  start_url:'/', display:'standalone',
-  background_color:'#ffffff', theme_color:'#d32f2f',
-  orientation:'portrait', scope:'/',
-  icons:[
-    {src:'/favicon.ico',sizes:'192x192',type:'image/x-icon',purpose:'any maskable'},
-    {src:'/favicon.ico',sizes:'512x512',type:'image/x-icon',purpose:'any maskable'},
+  name:             'TSN - Taxi Safety Network',
+  short_name:       'TSN Safety',
+  description:      'Emergency SOS alert system for taxi drivers in Cameroon. Real-time panic button, police notification, SMS broadcast and voice alerts.',
+  start_url:        '/',
+  display:          'standalone',
+  background_color: '#ffffff',
+  theme_color:      '#d32f2f',
+  orientation:      'portrait-primary',
+  scope:            '/',
+  lang:             'en',
+  categories:       ['utilities', 'safety', 'navigation'],
+  shortcuts: [
+    { name: 'SOS Alert', short_name: 'SOS', description: 'Trigger emergency SOS alert', url: '/', icons: [{ src: '/favicon.ico', sizes: '192x192' }] },
+    { name: 'Police Dashboard', short_name: 'Police', description: 'View active alerts', url: '/', icons: [{ src: '/favicon.ico', sizes: '192x192' }] },
+  ],
+  icons: [
+    { src: '/favicon.ico', sizes: '64x64',   type: 'image/x-icon', purpose: 'any' },
+    { src: '/favicon.ico', sizes: '192x192', type: 'image/x-icon', purpose: 'any maskable' },
+    { src: '/favicon.ico', sizes: '512x512', type: 'image/x-icon', purpose: 'any maskable' },
   ],
 };
 fs.writeFileSync(path.join(dist,'manifest.json'), JSON.stringify(manifest,null,2), 'utf8');

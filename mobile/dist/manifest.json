@@ -1,14 +1,52 @@
 {
   "name": "TSN - Taxi Safety Network",
-  "short_name": "TSN",
-  "description": "Emergency alert system for taxi drivers in Cameroon",
+  "short_name": "TSN Safety",
+  "description": "Emergency SOS alert system for taxi drivers in Cameroon. Real-time panic button, police notification, SMS broadcast and voice alerts.",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#ffffff",
   "theme_color": "#d32f2f",
-  "orientation": "portrait",
+  "orientation": "portrait-primary",
   "scope": "/",
+  "lang": "en",
+  "categories": [
+    "utilities",
+    "safety",
+    "navigation"
+  ],
+  "shortcuts": [
+    {
+      "name": "SOS Alert",
+      "short_name": "SOS",
+      "description": "Trigger emergency SOS alert",
+      "url": "/",
+      "icons": [
+        {
+          "src": "/favicon.ico",
+          "sizes": "192x192"
+        }
+      ]
+    },
+    {
+      "name": "Police Dashboard",
+      "short_name": "Police",
+      "description": "View active alerts",
+      "url": "/",
+      "icons": [
+        {
+          "src": "/favicon.ico",
+          "sizes": "192x192"
+        }
+      ]
+    }
+  ],
   "icons": [
+    {
+      "src": "/favicon.ico",
+      "sizes": "64x64",
+      "type": "image/x-icon",
+      "purpose": "any"
+    },
     {
       "src": "/favicon.ico",
       "sizes": "192x192",
