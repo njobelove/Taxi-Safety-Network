@@ -1,174 +1,277 @@
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, SafeAreaView, Switch, Alert, Linking } from 'react-native';
+import React, { useState, useCallback, useRef } from 'react';
+import {
+  View, Text, StyleSheet, TouchableOpacity, TextInput,
+  SafeAreaView, Alert, ActivityIndicator, ScrollView,
+} from 'react-native';
 import { MaterialIcons, Ionicons } from '@expo/vector-icons';
+import { registerDriver, registerPoliceStation } from '../services/api';
 import { useAuth } from '../services/AuthContext';
 
-const RED=('#d32f2f'),BLUE=('#1565C0'),GREEN=('#2e7d32'),GOLD=('#f5c518');
+const RED  = '#d32f2f';
+const BLUE = '#1565C0';
 
-export default function SettingsScreen({nav}){
-  const {user,role,logout}=useAuth();
-  const isDriver=role==='driver';
-  const [sosVibration,setSosVibration]=useState(true);
-  const [voiceAlerts,setVoiceAlerts]=useState(true);
-  const [pushNotif,setPushNotif]=useState(true);
-  const [alertSound,setAlertSound]=useState(true);
-  const [offlineSMS,setOfflineSMS]=useState(true);
-  const [autoShareLoc,setAutoShareLoc]=useState(true);
+// Field component OUTSIDE the main component so it never gets recreated
+const Field = ({ label, value, onChange, placeholder, keyboard, auto, hint, secure, accent }) => (
+  <View style={s.field}>
+    <Text style={s.label}>{label}</Text>
+    {hint ? <Text style={s.hint}>{hint}</Text> : null}
+    <TextInput
+      style={[s.input, { borderColor: accent }]}
+      value={value}
+      onChangeText={onChange}
+      placeholder={placeholder}
+      placeholderTextColor="#aaa"
+      keyboardType={keyboard || 'default'}
+      autoCapitalize={auto || 'words'}
+      autoCorrect={false}
+      autoComplete="off"
+      secureTextEntry={!!secure}
+      returnKeyType="next"
+      blurOnSubmit={false}
+    />
+  </View>
+);
 
-  const Row=({icon,title,subtitle,value,onChange,type='switch',onPress,danger,color})=>(
-    <TouchableOpacity style={s.row} onPress={type==='button'?onPress:undefined} activeOpacity={type==='button'?0.7:1}>
-      <View style={[s.rowIcon,danger&&{backgroundColor:'#fde8e8'}]}>
-        <MaterialIcons name={icon} size={22} color={danger?RED:color||'#555'}/>
-      </View>
-      <View style={s.rowInfo}>
-        <Text style={[s.rowTitle,danger&&{color:RED}]}>{title}</Text>
-        {subtitle&&<Text style={s.rowSub}>{subtitle}</Text>}
-      </View>
-      {type==='switch'&&<Switch value={value} onValueChange={onChange} trackColor={{false:'#ddd',true:RED}} thumbColor="#fff"/>}
-      {type==='button'&&<MaterialIcons name="chevron-right" size={22} color={danger?RED:'#ccc'}/>}
-      {type==='value'&&<Text style={s.rowVal}>{value}</Text>}
-    </TouchableOpacity>
-  );
+export default function SignupScreen({ nav }) {
+  const { login } = useAuth();
+  const [role,        setRole]        = useState('driver');
+  const [loading,     setLoading]     = useState(false);
+  const [fullName,    setFullName]    = useState('');
+  const [badgeId,     setBadgeId]     = useState('');
+  const [phoneNumber, setPhoneNumber] = useState('');
+  const [network,     setNetwork]     = useState('MTN');
+  const [vehiclePlate,setVehiclePlate]= useState('');
+  const [city,        setCity]        = useState('Yaoundé');
+  const [password,    setPassword]    = useState('');
+  const [confirmPass, setConfirmPass] = useState('');
+  const [stationName, setStationName] = useState('');
+  const [stationId,   setStationId]   = useState('');
+  const [district,    setDistrict]    = useState('');
+  const [commanderName,setCommanderName]=useState('');
+  const [emergencyLine,setEmergencyLine]=useState('');
 
-  return(
-    <SafeAreaView style={s.safe}>
-      <View style={s.header}>
-        <TouchableOpacity onPress={()=>nav(isDriver?'driverDashboard':'policeDashboard')}>
-          <MaterialIcons name="arrow-back" size={24} color={RED}/>
-        </TouchableOpacity>
-        <View style={{flexDirection:'row',alignItems:'center',gap:8,flex:1,justifyContent:'center'}}>
-          <MaterialIcons name="settings" size={22} color="#111"/>
-          <Text style={s.headerTitle}>SETTINGS</Text>
-        </View>
-        <View style={{width:34}}/>
-      </View>
+  const isDriver = role === 'driver';
+  const accent   = isDriver ? RED : BLUE;
 
-      <ScrollView showsVerticalScrollIndicator={false}>
-        <View style={s.accountCard}>
-          <View style={[s.accountAv,{backgroundColor:isDriver?RED:BLUE}]}>
-            <MaterialIcons name={isDriver?'directions-car':'account-balance'} size={32} color="#fff"/>
-          </View>
-          <View style={{flex:1}}>
-            <Text style={s.accountName}>{user?.fullName||user?.stationName||'—'}</Text>
-            <Text style={s.accountId}>{isDriver?user?.badgeId:user?.stationId}</Text>
-            <View style={[s.rolePill,{backgroundColor:isDriver?RED:BLUE}]}>
-              <MaterialIcons name={isDriver?'directions-car':'local-police'} size={12} color="#fff"/>
-              <Text style={s.rolePillTxt}>{isDriver?'DRIVER':'POLICE'}</Text>
+  const handleRegister = async () => {
+    if (isDriver) {
+      if (!fullName.trim())     return Alert.alert('Missing', 'Enter your full name.');
+      if (!badgeId.trim())      return Alert.alert('Missing', 'Enter your Badge ID e.g. TX-YDE-010');
+      if (!phoneNumber.trim())  return Alert.alert('Missing', 'Enter your phone number.');
+      if (!vehiclePlate.trim()) return Alert.alert('Missing', 'Enter your vehicle plate.');
+      if (!password.trim())     return Alert.alert('Missing', 'Enter a password.');
+      if (password.length < 6)  return Alert.alert('Weak', 'Password must be at least 6 characters.');
+      if (password !== confirmPass) return Alert.alert('Mismatch', 'Passwords do not match.');
+    } else {
+      if (!stationName.trim())   return Alert.alert('Missing', 'Enter station name.');
+      if (!stationId.trim())     return Alert.alert('Missing', 'Enter Station ID e.g. YDE-PS-010');
+      if (!district.trim())      return Alert.alert('Missing', 'Enter your district.');
+      if (!emergencyLine.trim()) return Alert.alert('Missing', 'Enter emergency line.');
+      if (!password.trim())      return Alert.alert('Missing', 'Enter a password.');
+      if (password !== confirmPass) return Alert.alert('Mismatch', 'Passwords do not match.');
+    }
+
+    setLoading(true);
+    try {
+      let result;
+      if (isDriver) {
+        result = await registerDriver({
+          fullName: fullName.trim(),
+          badgeId: badgeId.trim().toUpperCase(),
+          phoneNumber: phoneNumber.trim(),
+          network,
+          vehiclePlate: vehiclePlate.trim().toUpperCase(),
+          city,
+          password,
+        });
+      } else {
+        result = await registerPoliceStation({
+          stationName: stationName.trim(),
+          stationId: stationId.trim().toUpperCase(),
+          district: district.trim(),
+          city,
+          commanderName: commanderName.trim(),
+          emergencyLine: emergencyLine.trim(),
+          password,
+        });
+      }
+
+      if (result && (result.token || result.user)) {
+        login(result, isDriver ? 'driver' : 'police');
+      } else {
+        Alert.alert('Registered!',
+          isDriver
+            ? 'Account created! Login with Badge ID: ' + badgeId.toUpperCase()
+            : 'Account created! Login with Station ID: ' + stationId.toUpperCase(),
+          [{ text: 'LOGIN NOW', onPress: () => nav('login') }]
+        );
+      }
+    } catch (e) {
+      const msg = e.message || '';
+      if (msg.includes('duplicate') || msg.includes('11000') || msg.includes('EXISTS')) {
+        Alert.alert('ID Taken',
+          isDriver
+            ? 'Badge ID "' + badgeId.toUpperCase() + '" already exists. Try TX-YDE-' + (Math.floor(Math.random()*900)+100)
+            : 'Station ID already exists. Try a different one.'
+        );
+      } else if (msg.includes('network') || msg.includes('fetch')) {
+        Alert.alert('Connection Error', 'Server is waking up. Please try again in 30 seconds.');
+      } else {
+        Alert.alert('Error', msg || 'Registration failed. Please try again.');
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <SafeAreaView style={[s.safe, { backgroundColor: accent }]}>
+      <ScrollView
+        contentContainerStyle={{ flexGrow: 1 }}
+        keyboardShouldPersistTaps="always"
+        showsVerticalScrollIndicator={false}
+      >
+        {/* Header */}
+        <View style={s.top}>
+          <TouchableOpacity onPress={() => nav('login')} style={s.backRow}>
+            <MaterialIcons name="arrow-back" size={22} color="rgba(255,255,255,0.9)" />
+            <Text style={s.backTxt}>Back to Login</Text>
+          </TouchableOpacity>
+          <View style={s.logoRow}>
+            <View style={s.logoCircle}>
+              <Ionicons name="shield-checkmark" size={36} color={accent} />
+            </View>
+            <View>
+              <Text style={s.topTitle}>CREATE ACCOUNT</Text>
+              <Text style={s.topSub}>TSN — Cameroon</Text>
             </View>
           </View>
+          <View style={s.roleRow}>
+            <TouchableOpacity
+              style={[s.roleBtn, role === 'driver' && s.roleBtnActive]}
+              onPress={() => setRole('driver')}
+            >
+              <MaterialIcons name="directions-car" size={16} color={role === 'driver' ? accent : 'rgba(255,255,255,0.8)'} />
+              <Text style={[s.roleTxt, role === 'driver' && { color: accent }]}>TAXI DRIVER</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[s.roleBtn, role === 'police' && s.roleBtnActive]}
+              onPress={() => setRole('police')}
+            >
+              <MaterialIcons name="local-police" size={16} color={role === 'police' ? accent : 'rgba(255,255,255,0.8)'} />
+              <Text style={[s.roleTxt, role === 'police' && { color: accent }]}>POLICE STATION</Text>
+            </TouchableOpacity>
+          </View>
         </View>
 
-        <Text style={s.sectionTitle}>SOS & EMERGENCY</Text>
+        {/* Form Card */}
         <View style={s.card}>
-          <Row icon="vibration"     title="SOS Vibration"         subtitle="Vibrate phone hard when SOS triggers"         value={sosVibration}  onChange={setSosVibration}/>
-          <View style={s.div}/>
-          <Row icon="mic"           title="Voice Alert Broadcast"  subtitle="Play your voice note when SOS triggers"       value={voiceAlerts}   onChange={setVoiceAlerts}/>
-          <View style={s.div}/>
-          <Row icon="sms"           title="Offline SMS Fallback"   subtitle="Auto-send SMS to Police 117 if no internet"   value={offlineSMS}    onChange={setOfflineSMS}/>
-        </View>
+          <Text style={[s.cardTitle, { color: accent }]}>
+            {isDriver ? 'DRIVER REGISTRATION' : 'POLICE REGISTRATION'}
+          </Text>
 
-        <Text style={s.sectionTitle}>NOTIFICATIONS</Text>
-        <View style={s.card}>
-          <Row icon="notifications" title="Push Notifications"     subtitle="Get notified when new alerts are created"     value={pushNotif}     onChange={setPushNotif}/>
-          <View style={s.div}/>
-          <Row icon="volume-up"     title="Alert Sound"            subtitle="Play sound for incoming alerts"               value={alertSound}    onChange={setAlertSound}/>
-        </View>
+          {isDriver ? (
+            <>
+              <Field label="FULL NAME *"     value={fullName}     onChange={setFullName}     placeholder="e.g. Jean Paul Mbarga"  accent={accent} />
+              <Field label="BADGE ID *"      value={badgeId}      onChange={v => setBadgeId(v.toUpperCase())}     placeholder="e.g. TX-YDE-010" auto="characters" hint="Your login ID — must be unique" accent={accent} />
+              <Field label="PHONE NUMBER *"  value={phoneNumber}  onChange={setPhoneNumber}  placeholder="e.g. 677000000" keyboard="phone-pad" auto="none" accent={accent} />
 
-        <Text style={s.sectionTitle}>LOCATION</Text>
-        <View style={s.card}>
-          <Row icon="gps-fixed"     title="Auto-Share Location"    subtitle="Automatically share GPS when on duty"         value={autoShareLoc}  onChange={setAutoShareLoc}/>
-          <View style={s.div}/>
-          <Row icon="map"           title="Open Live Map"          subtitle="See all active drivers on map"                type="button" color={GREEN} onPress={()=>nav('liveMap')}/>
-        </View>
-
-        <Text style={s.sectionTitle}>SUBSCRIPTION</Text>
-        <View style={s.card}>
-          <Row icon="star"          title="Subscribe / Upgrade"    subtitle="MTN MoMo · Orange Money · Plans from 500 XAF" type="button" color={GOLD} onPress={()=>nav('subscription')}/>
-        </View>
-
-        <Text style={s.sectionTitle}>EMERGENCY CONTACTS</Text>
-        <View style={s.card}>
-          {[{icon:'local-police',label:'Police Emergency',number:'117',color:BLUE},{icon:'medical-services',label:'Ambulance / SAMU',number:'15',color:GREEN},{icon:'local-fire-department',label:'Fire Brigade',number:'118',color:RED}].map(({icon,label,number,color})=>(
-            <React.Fragment key={number}>
-              <TouchableOpacity style={s.row} onPress={()=>Alert.alert('Call '+label,'Dial '+number+'?',[{text:'Cancel',style:'cancel'},{text:'CALL NOW',onPress:()=>Linking.openURL('tel:'+number)}])}>
-                <View style={[s.rowIcon,{backgroundColor:color+'20'}]}><MaterialIcons name={icon} size={22} color={color}/></View>
-                <View style={s.rowInfo}>
-                  <Text style={s.rowTitle}>{label}</Text>
-                  <Text style={[s.rowSub,{color,fontWeight:'800'}]}>{number}</Text>
+              <View style={s.field}>
+                <Text style={s.label}>NETWORK *</Text>
+                <View style={s.chips}>
+                  {['MTN','Orange','Camtel','Nexttel'].map(n => (
+                    <TouchableOpacity key={n} style={[s.chip, network===n && {backgroundColor:accent}]} onPress={() => setNetwork(n)}>
+                      <Text style={[s.chipTxt, network===n && {color:'#fff'}]}>{n}</Text>
+                    </TouchableOpacity>
+                  ))}
                 </View>
-                <TouchableOpacity style={[s.callPill,{backgroundColor:color}]} onPress={()=>Linking.openURL('tel:'+number)}>
-                  <MaterialIcons name="phone" size={14} color="#fff"/>
-                  <Text style={s.callPillTxt}>CALL</Text>
-                </TouchableOpacity>
-              </TouchableOpacity>
-              <View style={s.div}/>
-            </React.Fragment>
-          ))}
-          <Row icon="manage-accounts" title="Manage Contacts" subtitle="Add custom police station numbers" type="button" onPress={()=>nav('profileSetup')}/>
-        </View>
+              </View>
 
-        <Text style={s.sectionTitle}>ABOUT TSN</Text>
-        <View style={s.card}>
-          <Row icon="info"          title="App Version"            subtitle="Taxi Safety Network"                          type="value" value="1.0.0"/>
-          <View style={s.div}/>
-          <Row icon="email"         title="Contact Support"        subtitle="support@tsn-cameroon.com"                     type="button" onPress={()=>Linking.openURL('mailto:support@tsn-cameroon.com')}/>
-          <View style={s.div}/>
-          <Row icon="lock"          title="Privacy Policy"         subtitle="How we protect your data"                     type="button" onPress={()=>Alert.alert('Privacy Policy','Your location and personal data are only shared during active SOS alerts with registered police stations and nearby drivers.')}/>
-        </View>
+              <Field label="VEHICLE PLATE *" value={vehiclePlate} onChange={v => setVehiclePlate(v.toUpperCase())} placeholder="e.g. LT-1234-A" auto="characters" accent={accent} />
 
-        <Text style={s.sectionTitle}>DANGER ZONE</Text>
-        <View style={s.card}>
-          <Row icon="delete" title="Clear Local Data" subtitle="Remove saved photo and voice note" type="button" danger
-            onPress={()=>Alert.alert('Clear All Data','This will clear your profile photo and voice note.',[{text:'Cancel',style:'cancel'},{text:'Clear',style:'destructive',onPress:()=>{try{const uid=user?.badgeId||user?.stationId;localStorage.removeItem('tsn_photo_'+uid);localStorage.removeItem('tsn_voice_'+uid);}catch(e){}Alert.alert('Done','Local data cleared.');}}])}
-          />
-        </View>
+              <View style={s.field}>
+                <Text style={s.label}>CITY *</Text>
+                <View style={s.chips}>
+                  {['Yaoundé','Douala','Bafoussam','Bamenda','Garoua'].map(c => (
+                    <TouchableOpacity key={c} style={[s.chip, city===c && {backgroundColor:accent}]} onPress={() => setCity(c)}>
+                      <Text style={[s.chipTxt, city===c && {color:'#fff'}]}>{c}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </View>
+            </>
+          ) : (
+            <>
+              <Field label="STATION NAME *"   value={stationName}   onChange={setStationName}   placeholder="e.g. Yaoundé Central Police" accent={accent} />
+              <Field label="STATION ID *"     value={stationId}     onChange={v => setStationId(v.toUpperCase())}     placeholder="e.g. YDE-PS-010" auto="characters" hint="Your login ID — must be unique" accent={accent} />
+              <Field label="DISTRICT *"       value={district}      onChange={setDistrict}      placeholder="e.g. Centre Urbain" accent={accent} />
+              <Field label="COMMANDER NAME"   value={commanderName} onChange={setCommanderName} placeholder="e.g. Commissaire Biya" accent={accent} />
+              <Field label="EMERGENCY LINE *" value={emergencyLine} onChange={setEmergencyLine} placeholder="e.g. 222231234" keyboard="phone-pad" auto="none" accent={accent} />
 
-        <TouchableOpacity style={s.logoutBtn} onPress={()=>{logout();nav('login');}}>
-          <MaterialIcons name="logout" size={20} color="#fff"/>
-          <Text style={s.logoutTxt}>LOGOUT / DÉCONNEXION</Text>
-        </TouchableOpacity>
+              <View style={s.field}>
+                <Text style={s.label}>CITY *</Text>
+                <View style={s.chips}>
+                  {['Yaoundé','Douala','Bafoussam','Bamenda','Garoua'].map(c => (
+                    <TouchableOpacity key={c} style={[s.chip, city===c && {backgroundColor:accent}]} onPress={() => setCity(c)}>
+                      <Text style={[s.chipTxt, city===c && {color:'#fff'}]}>{c}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </View>
+            </>
+          )}
 
-        <View style={{height:40}}/>
-      </ScrollView>
+          <Field label="PASSWORD *"         value={password}    onChange={setPassword}    placeholder="Minimum 6 characters" auto="none" secure accent={accent} />
+          <Field label="CONFIRM PASSWORD *" value={confirmPass} onChange={setConfirmPass} placeholder="Re-enter password"    auto="none" secure accent={accent} />
 
-      <View style={s.nav}>
-        {(isDriver?[{icon:'dashboard',lbl:'DASHBOARD',to:'driverDashboard'},{icon:'warning',lbl:'ALERTS',to:'emergency'},{icon:'history',lbl:'HISTORY',to:'history'},{icon:'settings',lbl:'SETTINGS',to:'settings'}]:[{icon:'dashboard',lbl:'DASHBOARD',to:'policeDashboard'},{icon:'map',lbl:'LIVE MAP',to:'liveMap'},{icon:'history',lbl:'HISTORY',to:'history'},{icon:'settings',lbl:'SETTINGS',to:'settings'}]).map(({icon,lbl,to})=>(
-          <TouchableOpacity key={lbl} style={lbl==='SETTINGS'?s.navActive:s.navItem} onPress={()=>nav(to)}>
-            <MaterialIcons name={icon} size={22} color={lbl==='SETTINGS'?'#fff':'#aaa'}/>
-            <Text style={lbl==='SETTINGS'?s.navTxtA:s.navTxt}>{lbl}</Text>
+          <TouchableOpacity
+            style={[s.btn, { backgroundColor: accent }, loading && { opacity: 0.6 }]}
+            onPress={handleRegister}
+            disabled={loading}
+          >
+            {loading ? <ActivityIndicator color="#fff" /> : (
+              <>
+                <MaterialIcons name={isDriver ? 'directions-car' : 'local-police'} size={20} color="#fff" />
+                <Text style={s.btnTxt}>{isDriver ? 'CREATE DRIVER ACCOUNT' : 'CREATE POLICE ACCOUNT'}</Text>
+              </>
+            )}
           </TouchableOpacity>
-        ))}
-      </View>
+
+          <TouchableOpacity onPress={() => nav('login')} style={s.loginLink}>
+            <MaterialIcons name="login" size={16} color={accent} />
+            <Text style={[s.loginLinkTxt, { color: accent }]}>Already have an account? LOGIN</Text>
+          </TouchableOpacity>
+        </View>
+        <View style={{ height: 40 }} />
+      </ScrollView>
     </SafeAreaView>
   );
 }
 
-const s=StyleSheet.create({
-  safe:{flex:1,backgroundColor:'#f5f5f5'},
-  header:{flexDirection:'row',alignItems:'center',justifyContent:'space-between',paddingHorizontal:16,paddingVertical:14,backgroundColor:'#fff',borderBottomWidth:1,borderBottomColor:'#eee'},
-  headerTitle:{fontSize:15,fontWeight:'900',color:'#111'},
-  accountCard:{flexDirection:'row',alignItems:'center',backgroundColor:'#fff',padding:20,marginBottom:4,gap:16,borderBottomWidth:1,borderBottomColor:'#eee'},
-  accountAv:{width:64,height:64,borderRadius:32,alignItems:'center',justifyContent:'center'},
-  accountName:{fontSize:18,fontWeight:'900',color:'#111',marginBottom:4},
-  accountId:{fontSize:12,color:'#888',marginBottom:8},
-  rolePill:{flexDirection:'row',alignItems:'center',gap:4,borderRadius:12,paddingHorizontal:12,paddingVertical:4,alignSelf:'flex-start'},
-  rolePillTxt:{fontSize:11,fontWeight:'800',color:'#fff'},
-  sectionTitle:{fontSize:11,fontWeight:'800',color:'#888',letterSpacing:0.8,paddingHorizontal:16,paddingTop:20,paddingBottom:8},
-  card:{backgroundColor:'#fff',borderTopWidth:1,borderBottomWidth:1,borderColor:'#eee'},
-  row:{flexDirection:'row',alignItems:'center',paddingHorizontal:16,paddingVertical:14,gap:14},
-  rowIcon:{width:36,height:36,borderRadius:10,backgroundColor:'#f5f5f5',alignItems:'center',justifyContent:'center'},
-  rowInfo:{flex:1},
-  rowTitle:{fontSize:14,fontWeight:'600',color:'#111'},
-  rowSub:{fontSize:11,color:'#888',marginTop:2},
-  rowVal:{fontSize:13,color:'#888',fontWeight:'600'},
-  div:{height:1,backgroundColor:'#f5f5f5',marginLeft:66},
-  callPill:{flexDirection:'row',alignItems:'center',gap:4,borderRadius:10,paddingHorizontal:10,paddingVertical:6},
-  callPillTxt:{fontSize:11,fontWeight:'800',color:'#fff'},
-  logoutBtn:{marginHorizontal:16,marginTop:24,backgroundColor:RED,borderRadius:14,paddingVertical:16,alignItems:'center',flexDirection:'row',justifyContent:'center',gap:8},
-  logoutTxt:{fontSize:15,fontWeight:'900',color:'#fff'},
-  nav:{flexDirection:'row',backgroundColor:'#fff',borderTopWidth:1,borderTopColor:'#eee',paddingVertical:8},
-  navActive:{flex:1,alignItems:'center',backgroundColor:RED,borderRadius:12,paddingVertical:6,marginHorizontal:4},
-  navItem:{flex:1,alignItems:'center',paddingVertical:6},
-  navTxtA:{fontSize:9,color:'#fff',marginTop:2,fontWeight:'700'},
-  navTxt:{fontSize:9,color:'#aaa',marginTop:2},
+const s = StyleSheet.create({
+  safe:         { flex: 1 },
+  top:          { padding: 20, paddingTop: 16, paddingBottom: 24 },
+  backRow:      { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 20 },
+  backTxt:      { color: 'rgba(255,255,255,0.9)', fontSize: 14, fontWeight: '600' },
+  logoRow:      { flexDirection: 'row', alignItems: 'center', gap: 14, marginBottom: 24 },
+  logoCircle:   { width: 60, height: 60, borderRadius: 30, backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center' },
+  topTitle:     { fontSize: 22, fontWeight: '900', color: '#fff' },
+  topSub:       { fontSize: 12, color: 'rgba(255,255,255,0.75)', marginTop: 2 },
+  roleRow:      { flexDirection: 'row', gap: 10 },
+  roleBtn:      { flex: 1, backgroundColor: 'rgba(255,255,255,0.2)', borderRadius: 12, paddingVertical: 12, alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 6, borderWidth: 1, borderColor: 'rgba(255,255,255,0.3)' },
+  roleBtnActive:{ backgroundColor: '#fff' },
+  roleTxt:      { fontSize: 12, fontWeight: '800', color: 'rgba(255,255,255,0.9)' },
+  card:         { backgroundColor: '#fff', borderTopLeftRadius: 28, borderTopRightRadius: 28, padding: 24, flex: 1 },
+  cardTitle:    { fontSize: 14, fontWeight: '900', letterSpacing: 0.5, marginBottom: 20 },
+  field:        { marginBottom: 16 },
+  label:        { fontSize: 11, fontWeight: '800', color: '#555', marginBottom: 4, letterSpacing: 0.5 },
+  hint:         { fontSize: 10, color: '#aaa', marginBottom: 6 },
+  input:        { borderWidth: 1.5, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 13, fontSize: 14, color: '#111', backgroundColor: '#fafafa' },
+  chips:        { flexDirection: 'row', gap: 8, flexWrap: 'wrap' },
+  chip:         { backgroundColor: '#f0f0f0', borderRadius: 10, paddingHorizontal: 14, paddingVertical: 9 },
+  chipTxt:      { fontSize: 13, fontWeight: '600', color: '#555' },
+  btn:          { borderRadius: 14, paddingVertical: 16, alignItems: 'center', marginTop: 8, marginBottom: 12, flexDirection: 'row', justifyContent: 'center', gap: 8 },
+  btnTxt:       { fontSize: 15, fontWeight: '900', color: '#fff' },
+  loginLink:    { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 10, gap: 6 },
+  loginLinkTxt: { fontSize: 13, fontWeight: '700' },
 });
