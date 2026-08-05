@@ -1,7 +1,8 @@
-import React, { useState, useCallback } from 'react';
+import React, { useRef, useState } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, TextInput,
-  SafeAreaView, Alert, ActivityIndicator, ScrollView,
+  SafeAreaView, Alert, ActivityIndicator,
+  KeyboardAvoidingView, Platform, ScrollView,
 } from 'react-native';
 import { MaterialIcons, Ionicons } from '@expo/vector-icons';
 import { registerDriver, registerPoliceStation } from '../services/api';
@@ -11,38 +12,46 @@ const RED  = '#d32f2f';
 const BLUE = '#1565C0';
 
 export default function SignupScreen({ nav }) {
-  const { login } = useAuth();
-  const [role,    setRole]    = useState('driver');
-  const [loading, setLoading] = useState(false);
-  const [form,    setForm]    = useState({
-    fullName: '', badgeId: '', phoneNumber: '', network: 'MTN',
-    vehiclePlate: '', city: 'Yaoundé', password: '', confirmPass: '',
-    stationName: '', stationId: '', district: '', commanderName: '', emergencyLine: '',
-  });
+  const { login }  = useAuth();
+  const [role,     setRole]    = useState('driver');
+  const [network,  setNetwork] = useState('MTN');
+  const [city,     setCity]    = useState('Yaoundé');
+  const [loading,  setLoading] = useState(false);
+  const [errorMsg, setErrorMsg] = useState('');
 
   const isDriver = role === 'driver';
   const accent   = isDriver ? RED : BLUE;
 
-  const set = useCallback((key, val) => {
-    setForm(prev => ({ ...prev, [key]: val }));
-  }, []);
+  // useRef for all text values — NO re-render on typing
+  const fullName     = useRef('');
+  const badgeId      = useRef('');
+  const phoneNumber  = useRef('');
+  const vehiclePlate = useRef('');
+  const password     = useRef('');
+  const confirmPass  = useRef('');
+  const stationName  = useRef('');
+  const stationId    = useRef('');
+  const district     = useRef('');
+  const commanderName= useRef('');
+  const emergencyLine= useRef('');
 
   const handleRegister = async () => {
+    setErrorMsg('');
     if (isDriver) {
-      if (!form.fullName.trim())     return Alert.alert('Missing', 'Enter your full name.');
-      if (!form.badgeId.trim())      return Alert.alert('Missing', 'Enter your Badge ID (e.g. TX-YDE-010).');
-      if (!form.phoneNumber.trim())  return Alert.alert('Missing', 'Enter your phone number.');
-      if (!form.vehiclePlate.trim()) return Alert.alert('Missing', 'Enter your vehicle plate.');
-      if (!form.password.trim())     return Alert.alert('Missing', 'Enter a password.');
-      if (form.password.length < 6)  return Alert.alert('Weak Password', 'Password must be at least 6 characters.');
-      if (form.password !== form.confirmPass) return Alert.alert('Mismatch', 'Passwords do not match.');
+      if (!fullName.current.trim())     return setErrorMsg('Enter your full name.');
+      if (!badgeId.current.trim())      return setErrorMsg('Enter your Badge ID e.g. TX-YDE-010');
+      if (!phoneNumber.current.trim())  return setErrorMsg('Enter your phone number.');
+      if (!vehiclePlate.current.trim()) return setErrorMsg('Enter your vehicle plate.');
+      if (!password.current.trim())     return setErrorMsg('Enter a password.');
+      if (password.current.length < 6)  return setErrorMsg('Password must be at least 6 characters.');
+      if (password.current !== confirmPass.current) return setErrorMsg('Passwords do not match.');
     } else {
-      if (!form.stationName.trim())   return Alert.alert('Missing', 'Enter station name.');
-      if (!form.stationId.trim())     return Alert.alert('Missing', 'Enter Station ID (e.g. YDE-PS-010).');
-      if (!form.district.trim())      return Alert.alert('Missing', 'Enter your district.');
-      if (!form.emergencyLine.trim()) return Alert.alert('Missing', 'Enter emergency line.');
-      if (!form.password.trim())      return Alert.alert('Missing', 'Enter a password.');
-      if (form.password !== form.confirmPass) return Alert.alert('Mismatch', 'Passwords do not match.');
+      if (!stationName.current.trim())   return setErrorMsg('Enter station name.');
+      if (!stationId.current.trim())     return setErrorMsg('Enter Station ID e.g. YDE-PS-010');
+      if (!district.current.trim())      return setErrorMsg('Enter your district.');
+      if (!emergencyLine.current.trim()) return setErrorMsg('Enter emergency line.');
+      if (!password.current.trim())      return setErrorMsg('Enter a password.');
+      if (password.current !== confirmPass.current) return setErrorMsg('Passwords do not match.');
     }
 
     setLoading(true);
@@ -50,80 +59,64 @@ export default function SignupScreen({ nav }) {
       let result;
       if (isDriver) {
         result = await registerDriver({
-          fullName:     form.fullName.trim(),
-          badgeId:      form.badgeId.trim().toUpperCase(),
-          phoneNumber:  form.phoneNumber.trim(),
-          network:      form.network,
-          vehiclePlate: form.vehiclePlate.trim().toUpperCase(),
-          city:         form.city,
-          password:     form.password,
+          fullName:     fullName.current.trim(),
+          badgeId:      badgeId.current.trim().toUpperCase(),
+          phoneNumber:  phoneNumber.current.trim(),
+          network,
+          vehiclePlate: vehiclePlate.current.trim().toUpperCase(),
+          city,
+          password:     password.current,
         });
       } else {
         result = await registerPoliceStation({
-          stationName:   form.stationName.trim(),
-          stationId:     form.stationId.trim().toUpperCase(),
-          district:      form.district.trim(),
-          city:          form.city,
-          commanderName: form.commanderName.trim(),
-          emergencyLine: form.emergencyLine.trim(),
-          password:      form.password,
+          stationName:   stationName.current.trim(),
+          stationId:     stationId.current.trim().toUpperCase(),
+          district:      district.current.trim(),
+          city,
+          commanderName: commanderName.current.trim(),
+          emergencyLine: emergencyLine.current.trim(),
+          password:      password.current,
         });
       }
 
-      // Auto-login after successful registration
       if (result && (result.token || result.user)) {
         login(result, isDriver ? 'driver' : 'police');
       } else {
-        Alert.alert(
-          '✅ Registered!',
+        Alert.alert('✅ Registered!',
           isDriver
-            ? 'Account created! Login with Badge ID: ' + form.badgeId.toUpperCase()
-            : 'Account created! Login with Station ID: ' + form.stationId.toUpperCase(),
-          [{ text: 'LOGIN NOW', onPress: () => nav('login') }]
+            ? 'Login with Badge ID: ' + badgeId.current.toUpperCase()
+            : 'Login with Station ID: ' + stationId.current.toUpperCase(),
+          [{ text: 'LOGIN', onPress: () => nav('login') }]
         );
       }
     } catch (e) {
       const msg = e.message || '';
       if (msg.includes('duplicate') || msg.includes('11000') || msg.includes('EXISTS')) {
-        Alert.alert('ID Taken', isDriver
-          ? 'Badge ID "' + form.badgeId.toUpperCase() + '" is already registered. Try TX-YDE-' + (Math.floor(Math.random()*900)+100)
-          : 'Station ID already exists. Try a different one.'
+        setErrorMsg(isDriver
+          ? 'Badge ID "' + badgeId.current.toUpperCase() + '" already taken. Try TX-YDE-' + (Math.floor(Math.random()*900)+100)
+          : 'Station ID already taken. Try a different one.'
         );
-      } else if (msg.includes('network') || msg.includes('fetch')) {
-        Alert.alert('Connection Error', 'Server is waking up. Please try again in 30 seconds.');
+      } else if (msg.includes('network') || msg.includes('fetch') || msg.includes('connect')) {
+        setErrorMsg('Server waking up. Please wait 30 seconds and try again.');
       } else {
-        Alert.alert('Error', msg || 'Registration failed. Please try again.');
+        setErrorMsg(msg || 'Registration failed. Please try again.');
       }
     } finally {
       setLoading(false);
     }
   };
 
-  const F = ({ label, k, placeholder, keyboard, auto, hint, secure }) => (
-    <View style={s.field}>
-      <Text style={s.label}>{label}</Text>
-      {hint && <Text style={s.hint}>{hint}</Text>}
-      <TextInput
-        style={[s.input, { borderColor: accent }]}
-        value={form[k]}
-        onChangeText={v => set(k, v)}
-        placeholder={placeholder}
-        placeholderTextColor="#aaa"
-        keyboardType={keyboard || 'default'}
-        autoCapitalize={auto || 'words'}
-        autoCorrect={false}
-        secureTextEntry={!!secure}
-        returnKeyType="next"
-        blurOnSubmit={false}
-      />
-    </View>
-  );
-
   return (
     <SafeAreaView style={[s.safe, { backgroundColor: accent }]}>
-      <View style={{ flex: 1 }}>
-        <ScrollView contentContainerStyle={{ flexGrow: 1 }} keyboardShouldPersistTaps="always" showsVerticalScrollIndicator={false}>
-
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      >
+        <ScrollView
+          contentContainerStyle={{ flexGrow: 1 }}
+          keyboardShouldPersistTaps="always"
+          showsVerticalScrollIndicator={false}
+        >
           {/* Header */}
           <View style={s.top}>
             <TouchableOpacity onPress={() => nav('login')} style={s.backRow}>
@@ -139,94 +132,132 @@ export default function SignupScreen({ nav }) {
                 <Text style={s.topSub}>TSN — Cameroon</Text>
               </View>
             </View>
-
-            {/* Role selector */}
             <View style={s.roleRow}>
-              <TouchableOpacity
-                style={[s.roleBtn, role === 'driver' && s.roleBtnActive]}
-                onPress={() => setRole('driver')}
-              >
-                <MaterialIcons name="directions-car" size={16} color={role === 'driver' ? accent : 'rgba(255,255,255,0.8)'} />
-                <Text style={[s.roleTxt, role === 'driver' && { color: accent }]}>TAXI DRIVER</Text>
+              <TouchableOpacity style={[s.roleBtn, isDriver && s.roleBtnActive]} onPress={() => setRole('driver')}>
+                <MaterialIcons name="directions-car" size={16} color={isDriver ? accent : 'rgba(255,255,255,0.8)'} />
+                <Text style={[s.roleTxt, isDriver && { color: accent }]}>TAXI DRIVER</Text>
               </TouchableOpacity>
-              <TouchableOpacity
-                style={[s.roleBtn, role === 'police' && s.roleBtnActive]}
-                onPress={() => setRole('police')}
-              >
-                <MaterialIcons name="local-police" size={16} color={role === 'police' ? accent : 'rgba(255,255,255,0.8)'} />
-                <Text style={[s.roleTxt, role === 'police' && { color: accent }]}>POLICE STATION</Text>
+              <TouchableOpacity style={[s.roleBtn, !isDriver && s.roleBtnActive]} onPress={() => setRole('police')}>
+                <MaterialIcons name="local-police" size={16} color={!isDriver ? accent : 'rgba(255,255,255,0.8)'} />
+                <Text style={[s.roleTxt, !isDriver && { color: accent }]}>POLICE STATION</Text>
               </TouchableOpacity>
             </View>
           </View>
 
-          {/* Form */}
+          {/* Form Card */}
           <View style={s.card}>
             <Text style={[s.cardTitle, { color: accent }]}>
               {isDriver ? 'DRIVER REGISTRATION' : 'POLICE REGISTRATION'}
             </Text>
 
+            {errorMsg ? (
+              <View style={s.errorBox}>
+                <MaterialIcons name="warning" size={16} color={RED} />
+                <Text style={s.errorTxt}>{errorMsg}</Text>
+              </View>
+            ) : null}
+
             {isDriver ? (
               <>
-                <F label="FULL NAME *"      k="fullName"     placeholder="e.g. Jean Paul Mbarga" />
-                <F label="BADGE ID *"       k="badgeId"      placeholder="e.g. TX-YDE-010" auto="characters" hint="Your login ID — must be unique" />
-                <F label="PHONE NUMBER *"   k="phoneNumber"  placeholder="e.g. 677000000" keyboard="phone-pad" auto="none" />
-                <View style={s.field}>
-                  <Text style={s.label}>NETWORK *</Text>
-                  <View style={s.chips}>
-                    {['MTN','Orange','Camtel','Nexttel'].map(n => (
-                      <TouchableOpacity key={n} style={[s.chip, form.network===n && {backgroundColor: accent}]} onPress={() => set('network', n)}>
-                        <Text style={[s.chipTxt, form.network===n && {color:'#fff'}]}>{n}</Text>
-                      </TouchableOpacity>
-                    ))}
-                  </View>
+                <Text style={s.lbl}>FULL NAME *</Text>
+                <TextInput style={[s.inp, { borderColor: accent }]}
+                  onChangeText={v => { fullName.current = v; }}
+                  placeholder="e.g. Jean Paul Mbarga"
+                  placeholderTextColor="#aaa" autoCorrect={false} />
+
+                <Text style={s.lbl}>BADGE ID * <Text style={s.hint}>(your login ID, e.g. TX-YDE-010)</Text></Text>
+                <TextInput style={[s.inp, { borderColor: accent }]}
+                  onChangeText={v => { badgeId.current = v.toUpperCase(); }}
+                  placeholder="e.g. TX-YDE-010"
+                  placeholderTextColor="#aaa" autoCapitalize="characters" autoCorrect={false} />
+
+                <Text style={s.lbl}>PHONE NUMBER *</Text>
+                <TextInput style={[s.inp, { borderColor: accent }]}
+                  onChangeText={v => { phoneNumber.current = v; }}
+                  placeholder="e.g. 677000000"
+                  placeholderTextColor="#aaa" keyboardType="phone-pad" autoCorrect={false} />
+
+                <Text style={s.lbl}>NETWORK *</Text>
+                <View style={s.chips}>
+                  {['MTN','Orange','Camtel','Nexttel'].map(n => (
+                    <TouchableOpacity key={n} style={[s.chip, network===n && {backgroundColor:accent}]} onPress={() => setNetwork(n)}>
+                      <Text style={[s.chipTxt, network===n && {color:'#fff'}]}>{n}</Text>
+                    </TouchableOpacity>
+                  ))}
                 </View>
-                <F label="VEHICLE PLATE *"  k="vehiclePlate" placeholder="e.g. LT-1234-A" auto="characters" />
-                <View style={s.field}>
-                  <Text style={s.label}>CITY *</Text>
-                  <View style={s.chips}>
-                    {['Yaoundé','Douala','Bafoussam','Bamenda','Garoua'].map(c => (
-                      <TouchableOpacity key={c} style={[s.chip, form.city===c && {backgroundColor: accent}]} onPress={() => set('city', c)}>
-                        <Text style={[s.chipTxt, form.city===c && {color:'#fff'}]}>{c}</Text>
-                      </TouchableOpacity>
-                    ))}
-                  </View>
-                </View>
+
+                <Text style={s.lbl}>VEHICLE PLATE *</Text>
+                <TextInput style={[s.inp, { borderColor: accent }]}
+                  onChangeText={v => { vehiclePlate.current = v.toUpperCase(); }}
+                  placeholder="e.g. LT-1234-A"
+                  placeholderTextColor="#aaa" autoCapitalize="characters" autoCorrect={false} />
               </>
             ) : (
               <>
-                <F label="STATION NAME *"   k="stationName"   placeholder="e.g. Yaoundé Central Police" />
-                <F label="STATION ID *"     k="stationId"     placeholder="e.g. YDE-PS-010" auto="characters" hint="Your login ID — must be unique" />
-                <F label="DISTRICT *"       k="district"      placeholder="e.g. Centre Urbain" />
-                <F label="COMMANDER NAME"   k="commanderName" placeholder="e.g. Commissaire Biya" />
-                <F label="EMERGENCY LINE *" k="emergencyLine" placeholder="e.g. 222231234" keyboard="phone-pad" auto="none" />
-                <View style={s.field}>
-                  <Text style={s.label}>CITY *</Text>
-                  <View style={s.chips}>
-                    {['Yaoundé','Douala','Bafoussam','Bamenda','Garoua'].map(c => (
-                      <TouchableOpacity key={c} style={[s.chip, form.city===c && {backgroundColor: accent}]} onPress={() => set('city', c)}>
-                        <Text style={[s.chipTxt, form.city===c && {color:'#fff'}]}>{c}</Text>
-                      </TouchableOpacity>
-                    ))}
-                  </View>
-                </View>
+                <Text style={s.lbl}>STATION NAME *</Text>
+                <TextInput style={[s.inp, { borderColor: accent }]}
+                  onChangeText={v => { stationName.current = v; }}
+                  placeholder="e.g. Yaoundé Central Police"
+                  placeholderTextColor="#aaa" autoCorrect={false} />
+
+                <Text style={s.lbl}>STATION ID * <Text style={s.hint}>(your login ID, e.g. YDE-PS-010)</Text></Text>
+                <TextInput style={[s.inp, { borderColor: accent }]}
+                  onChangeText={v => { stationId.current = v.toUpperCase(); }}
+                  placeholder="e.g. YDE-PS-010"
+                  placeholderTextColor="#aaa" autoCapitalize="characters" autoCorrect={false} />
+
+                <Text style={s.lbl}>DISTRICT *</Text>
+                <TextInput style={[s.inp, { borderColor: accent }]}
+                  onChangeText={v => { district.current = v; }}
+                  placeholder="e.g. Centre Urbain"
+                  placeholderTextColor="#aaa" autoCorrect={false} />
+
+                <Text style={s.lbl}>COMMANDER NAME</Text>
+                <TextInput style={[s.inp, { borderColor: accent }]}
+                  onChangeText={v => { commanderName.current = v; }}
+                  placeholder="e.g. Commissaire Biya"
+                  placeholderTextColor="#aaa" autoCorrect={false} />
+
+                <Text style={s.lbl}>EMERGENCY LINE *</Text>
+                <TextInput style={[s.inp, { borderColor: accent }]}
+                  onChangeText={v => { emergencyLine.current = v; }}
+                  placeholder="e.g. 222231234"
+                  placeholderTextColor="#aaa" keyboardType="phone-pad" autoCorrect={false} />
               </>
             )}
 
-            <F label="PASSWORD *"         k="password"    placeholder="Minimum 6 characters" auto="none" secure />
-            <F label="CONFIRM PASSWORD *" k="confirmPass" placeholder="Re-enter password"    auto="none" secure />
+            <Text style={s.lbl}>CITY *</Text>
+            <View style={s.chips}>
+              {['Yaoundé','Douala','Bafoussam','Bamenda','Garoua'].map(c => (
+                <TouchableOpacity key={c} style={[s.chip, city===c && {backgroundColor:accent}]} onPress={() => setCity(c)}>
+                  <Text style={[s.chipTxt, city===c && {color:'#fff'}]}>{c}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            <Text style={s.lbl}>PASSWORD *</Text>
+            <TextInput style={[s.inp, { borderColor: accent }]}
+              onChangeText={v => { password.current = v; }}
+              placeholder="Minimum 6 characters"
+              placeholderTextColor="#aaa" secureTextEntry autoCorrect={false} autoCapitalize="none" />
+
+            <Text style={s.lbl}>CONFIRM PASSWORD *</Text>
+            <TextInput style={[s.inp, { borderColor: accent }]}
+              onChangeText={v => { confirmPass.current = v; }}
+              placeholder="Re-enter password"
+              placeholderTextColor="#aaa" secureTextEntry autoCorrect={false} autoCapitalize="none" />
 
             <TouchableOpacity
               style={[s.btn, { backgroundColor: accent }, loading && { opacity: 0.6 }]}
               onPress={handleRegister}
               disabled={loading}
             >
-              {loading
-                ? <ActivityIndicator color="#fff" />
-                : <>
-                    <MaterialIcons name={isDriver ? 'directions-car' : 'local-police'} size={20} color="#fff" />
-                    <Text style={s.btnTxt}>{isDriver ? 'CREATE DRIVER ACCOUNT' : 'CREATE POLICE ACCOUNT'}</Text>
-                  </>
-              }
+              {loading ? <ActivityIndicator color="#fff" /> : (
+                <>
+                  <MaterialIcons name={isDriver ? 'directions-car' : 'local-police'} size={20} color="#fff" />
+                  <Text style={s.btnTxt}>{isDriver ? 'CREATE DRIVER ACCOUNT' : 'CREATE POLICE ACCOUNT'}</Text>
+                </>
+              )}
             </TouchableOpacity>
 
             <TouchableOpacity onPress={() => nav('login')} style={s.loginLink}>
@@ -236,7 +267,7 @@ export default function SignupScreen({ nav }) {
           </View>
           <View style={{ height: 40 }} />
         </ScrollView>
-      </View>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
@@ -250,21 +281,22 @@ const s = StyleSheet.create({
   logoCircle:   { width: 60, height: 60, borderRadius: 30, backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center' },
   topTitle:     { fontSize: 22, fontWeight: '900', color: '#fff' },
   topSub:       { fontSize: 12, color: 'rgba(255,255,255,0.75)', marginTop: 2 },
-  roleRow:      { flexDirection: 'row', gap: 10 },
+  roleRow:      { flexDirection: 'row', gap: 10, marginTop: 8 },
   roleBtn:      { flex: 1, backgroundColor: 'rgba(255,255,255,0.2)', borderRadius: 12, paddingVertical: 12, alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 6, borderWidth: 1, borderColor: 'rgba(255,255,255,0.3)' },
   roleBtnActive:{ backgroundColor: '#fff' },
   roleTxt:      { fontSize: 12, fontWeight: '800', color: 'rgba(255,255,255,0.9)' },
   card:         { backgroundColor: '#fff', borderTopLeftRadius: 28, borderTopRightRadius: 28, padding: 24, flex: 1 },
-  cardTitle:    { fontSize: 14, fontWeight: '900', letterSpacing: 0.5, marginBottom: 20 },
-  field:        { marginBottom: 16 },
-  label:        { fontSize: 11, fontWeight: '800', color: '#555', marginBottom: 4, letterSpacing: 0.5 },
-  hint:         { fontSize: 10, color: '#aaa', marginBottom: 6 },
-  input:        { borderWidth: 1.5, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 13, fontSize: 14, color: '#111', backgroundColor: '#fafafa' },
-  chips:        { flexDirection: 'row', gap: 8, flexWrap: 'wrap' },
+  cardTitle:    { fontSize: 14, fontWeight: '900', letterSpacing: 0.5, marginBottom: 16 },
+  lbl:          { fontSize: 11, fontWeight: '800', color: '#555', marginBottom: 4, letterSpacing: 0.5 },
+  hint:         { fontSize: 10, color: '#aaa', fontWeight: '400' },
+  inp:          { borderWidth: 1.5, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 13, fontSize: 14, color: '#111', backgroundColor: '#fafafa', marginBottom: 14 },
+  chips:        { flexDirection: 'row', gap: 8, flexWrap: 'wrap', marginBottom: 14 },
   chip:         { backgroundColor: '#f0f0f0', borderRadius: 10, paddingHorizontal: 14, paddingVertical: 9 },
   chipTxt:      { fontSize: 13, fontWeight: '600', color: '#555' },
   btn:          { borderRadius: 14, paddingVertical: 16, alignItems: 'center', marginTop: 8, marginBottom: 12, flexDirection: 'row', justifyContent: 'center', gap: 8 },
   btnTxt:       { fontSize: 15, fontWeight: '900', color: '#fff' },
   loginLink:    { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 10, gap: 6 },
   loginLinkTxt: { fontSize: 13, fontWeight: '700' },
+  errorBox:     { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: '#fde8e8', borderRadius: 10, padding: 12, marginBottom: 16 },
+  errorTxt:     { fontSize: 13, color: RED, fontWeight: '600', flex: 1 },
 });
